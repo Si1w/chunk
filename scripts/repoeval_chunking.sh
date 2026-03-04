@@ -19,12 +19,13 @@
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+source "$(dirname "$0")/container.env"
 CONFIG="${PROJECT_DIR}/configs/repoeval.yaml"
 
 echo "=== Chunking ==="
 echo "Config: ${CONFIG}"
 echo "Start: $(date)"
 
-uv run python -m eval.repoeval.make_window --config "${CONFIG}"
+uv_run python -m eval.repoeval.make_window --config "${CONFIG}"
 
 echo "=== Done: $(date) ==="

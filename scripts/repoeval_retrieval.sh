@@ -19,6 +19,7 @@
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+source "$(dirname "$0")/container.env"
 SCRIPT_PATH="$(realpath "$0")"
 DEFAULT_CONFIG="${PROJECT_DIR}/configs/repoeval.yaml"
 
@@ -32,7 +33,7 @@ if [ -n "${SLURM_JOB_ID:-}" ]; then
     echo "Start: $(date)"
 
     cd "${PROJECT_DIR}"
-    uv run python -m eval.repoeval.retrieval \
+    uv_run python -m eval.repoeval.retrieval \
         --config "${CONFIG}" \
         --embed_model "${EMBED_MODEL}"
 
@@ -43,7 +44,7 @@ fi
 # --- Mode: submit all models (called by bash) ---
 CONFIG="${1:-${DEFAULT_CONFIG}}"
 
-EMBED_MODELS=$(cd "${PROJECT_DIR}" && uv run python -c "
+EMBED_MODELS=$(cd "${PROJECT_DIR}" && uv_run python -c "
 import yaml
 with open('${CONFIG}') as f:
     cfg = yaml.safe_load(f)
