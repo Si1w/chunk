@@ -1,0 +1,45 @@
+# RepoEval experiment configuration
+
+# --- Chunking ---
+chunking:
+  language: python
+  method: all                 # function | declaration | sliding | all
+  max_chunk_sizes:
+    - 2000
+  metadata_template: repoeval
+  overlap_lines: 15           # sliding window overlap
+  chunk_expansion: false
+  private_function: false
+  function_overlap: false
+
+# --- Query ---
+query:
+  context_length: 2k          # 1k | 2k | 4k
+  prompt_type: codex           # codex | codegen
+  window_size: 20
+
+# --- Retrieval ---
+retrieval:
+  embed_models:
+    - none                        # no retrieval baseline
+    - bm25
+    - Qwen/Qwen3-Embedding-0.6B
+    - google/embeddinggemma-300m
+    - Qwen/Qwen3-Embedding-4B
+  device: cuda
+  batch_size: 32
+  top_k: 10
+
+# --- Inference ---
+inference:
+  llms:
+    - Qwen/Qwen2.5-Coder-7B
+  max_seq_length: 8192
+  max_crossfile_contexts:
+    - 2048
+  max_generate_tokens: 50
+
+# --- Evaluation ---
+evaluation:
+  split: both                  # api | line | both
+  passk: 1
