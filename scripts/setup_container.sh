@@ -1,5 +1,5 @@
 #!/bin/bash
-# One-time setup: pull the NVIDIA PyTorch container image.
+# One-time setup: pull the NVIDIA PyTorch container image and sync dependencies.
 #
 # Usage: sbatch scripts/setup_container.sh
 #
@@ -29,3 +29,14 @@ else
 fi
 
 echo "Done: ${SIF}"
+
+# Sync Python dependencies inside the container (ensures GPU PyTorch)
+PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+echo "Syncing dependencies..."
+cd "${PROJECT_DIR}"
+singularity exec \
+    --bind "/scratch/users/${USER}:/scratch/users/${USER}" \
+    "${SIF}" uv sync --all-extras
+
+echo "Done: uv sync"
