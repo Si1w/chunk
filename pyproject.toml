@@ -14,8 +14,20 @@ dependencies = [
     "tree-sitter-typescript",
 ]
 
+[project.optional-dependencies]
+eval = [
+    "bm25s",
+    "editdistance",
+    "faiss-cpu",
+    "pyyaml",
+    "requests",
+    "sentence-transformers",
+    "tqdm",
+    "vllm",
+]
+
 [tool.hatch.build.targets.wheel]
-packages = ["chunk"]
+packages = ["chunk", "eval"]
 
 [build-system]
 requires = ["hatchling"]
