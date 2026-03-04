@@ -36,10 +36,10 @@ PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 UV_BIN="$(which uv)"
 
 echo "Syncing dependencies..."
-cd "${PROJECT_DIR}"
 singularity exec \
     --bind "/scratch/users/${USER}:/scratch/users/${USER}" \
     --bind "${UV_BIN}:/usr/local/bin/uv:ro" \
+    --pwd "${PROJECT_DIR}" \
     "${SIF}" uv sync --all-extras
 
 echo "Done: uv sync"
