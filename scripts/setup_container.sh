@@ -4,7 +4,7 @@
 # Usage: bash scripts/setup_container.sh
 set -euo pipefail
 
-SIF_DIR="/scratch/${USER}/images"
+SIF_DIR="/scratch/users/${USER}/images"
 SIF="${SIF_DIR}/pytorch_24.12.sif"
 
 mkdir -p "${SIF_DIR}"

@@ -62,7 +62,7 @@ All experiments can run inside a Singularity container for reproducibility. One-
 bash scripts/setup_container.sh
 ```
 
-This pulls the NVIDIA PyTorch image to `/scratch/$USER/images/`. The SLURM scripts automatically use the container via `singularity exec --nv`.
+This pulls the NVIDIA PyTorch image to `/scratch/users/$USER/images/`. The SLURM scripts automatically use the container via `singularity exec --nv`.
 
 ### 1. Fetch Dataset
 
