@@ -1,7 +1,19 @@
 #!/bin/bash
 # One-time setup: pull the NVIDIA PyTorch container image.
 #
-# Usage: bash scripts/setup_container.sh
+# Usage: sbatch scripts/setup_container.sh
+#
+# --- SLURM directives ---
+#SBATCH -J setup_container
+#SBATCH -p cpu
+#SBATCH -t 02:00:00
+#SBATCH -o %x_%j.out
+#SBATCH -e %x_%j.err
+#SBATCH -N 1
+#SBATCH -n 1
+#SBATCH -c 4
+#SBATCH --mem=16G
+
 set -euo pipefail
 
 SIF_DIR="/scratch/users/${USER}/images"
