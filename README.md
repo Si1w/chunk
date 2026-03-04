@@ -54,6 +54,16 @@ uv run python examples/chunking.py --method function   # or declaration, sliding
 The `eval/` module implements a full evaluation pipeline on the [RepoEval](https://github.com/microsoft/CodeT) benchmark:
 chunking → retrieval → code completion → scoring.
 
+### Container Setup (Optional)
+
+All experiments can run inside a Singularity container for reproducibility. One-time setup:
+
+```bash
+bash scripts/setup_container.sh
+```
+
+This pulls the NVIDIA PyTorch image to `/scratch/$USER/images/`. The SLURM scripts automatically use the container via `singularity exec --nv`.
+
 ### 1. Fetch Dataset
 
 ```bash
