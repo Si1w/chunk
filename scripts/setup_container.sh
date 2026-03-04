@@ -32,7 +32,7 @@ echo "Done: ${SIF}"
 
 # Sync Python dependencies inside the container
 # uv is on the host; bind it into the container so it can run
-PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+PROJECT_DIR="${SLURM_SUBMIT_DIR}"
 UV_BIN="$(which uv)"
 
 echo "Syncing dependencies..."
