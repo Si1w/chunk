@@ -30,13 +30,16 @@ fi
 
 echo "Done: ${SIF}"
 
-# Sync Python dependencies inside the container (ensures GPU PyTorch)
+# Sync Python dependencies inside the container
+# uv is on the host; bind it into the container so it can run
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+UV_BIN="$(which uv)"
 
 echo "Syncing dependencies..."
 cd "${PROJECT_DIR}"
 singularity exec \
     --bind "/scratch/users/${USER}:/scratch/users/${USER}" \
+    --bind "${UV_BIN}:/usr/local/bin/uv:ro" \
     "${SIF}" uv sync --all-extras
 
 echo "Done: uv sync"
