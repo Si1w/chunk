@@ -1,10 +1,10 @@
 #!/bin/bash
 # Usage:
-#   bash repoeval_retrieval.sh [config]                          # submit one job per (embed_model, split)
-#   sbatch repoeval_retrieval.sh <embed_model> <split>           # run single pair (called by SLURM)
+#   bash repoeval_retrieval.sh [config]                              # submit all (embed_model, split) pairs
+#   bash repoeval_retrieval.sh <embed_model> <split> [config]        # submit single pair
+#   sbatch ... repoeval_retrieval.sh --run <embed_model> <split> [config]  # execute (called by sbatch)
 #
-# --- SLURM directives (used when called via sbatch) ---
-#SBATCH -J repoeval_ret
+# --- SLURM directives ---
 #SBATCH -t 12:00:00
 #SBATCH -o %x_%j.out
 #SBATCH -N 1
@@ -19,11 +19,37 @@ cd "${PROJECT_DIR}"
 SCRIPT_PATH="$(realpath "$0")"
 DEFAULT_CONFIG="${PROJECT_DIR}/configs/repoeval.yaml"
 
-# --- Mode: run single (embed_model, split) pair (called by sbatch) ---
-if [ -n "${SLURM_JOB_ID:-}" ]; then
-    EMBED_MODEL="${1:?Missing embed_model}"
-    SPLIT="${2:?Missing split}"
-    CONFIG="${3:-${DEFAULT_CONFIG}}"
+submit_job() {
+    local embed_model="$1" split="$2" config="$3"
+    local safe_name
+    safe_name=$(echo "${embed_model}_${split}" | tr '/' '_')
+
+    local JOB_ID
+    if [ "${embed_model}" = "bm25" ]; then
+        JOB_ID=$(sbatch \
+            --job-name="ret_${safe_name}" \
+            --output="ret_${safe_name}_%j.out" \
+            --partition=cpu \
+            "${SCRIPT_PATH}" --run "${embed_model}" "${split}" "${config}" \
+            | awk '{print $4}')
+    else
+        JOB_ID=$(sbatch \
+            --job-name="ret_${safe_name}" \
+            --output="ret_${safe_name}_%j.out" \
+            --partition=gpu \
+            --gpus=1 \
+            --constraint="a100|h100|h200|b200|l40s" \
+            "${SCRIPT_PATH}" --run "${embed_model}" "${split}" "${config}" \
+            | awk '{print $4}')
+    fi
+    echo "Submitted: ${embed_model} / ${split} -> job ${JOB_ID}"
+}
+
+# --- Mode: execute (called by sbatch via --run flag) ---
+if [ "${1:-}" = "--run" ]; then
+    EMBED_MODEL="${2:?Missing embed_model}"
+    SPLIT="${3:?Missing split}"
+    CONFIG="${4:-${DEFAULT_CONFIG}}"
 
     echo "=== Retrieval: ${EMBED_MODEL} / ${SPLIT} ==="
     echo "GPU: $(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>/dev/null || echo 'N/A')"
@@ -38,7 +64,16 @@ if [ -n "${SLURM_JOB_ID:-}" ]; then
     exit 0
 fi
 
-# --- Mode: submit all (embed_model, split) pairs (called by bash) ---
+# --- Mode: submit single pair ---
+if [ $# -ge 2 ] && [ "${1:-}" != "--run" ]; then
+    EMBED_MODEL="$1"
+    SPLIT="$2"
+    CONFIG="${3:-${DEFAULT_CONFIG}}"
+    submit_job "${EMBED_MODEL}" "${SPLIT}" "${CONFIG}"
+    exit 0
+fi
+
+# --- Mode: submit all (embed_model, split) pairs ---
 CONFIG="${1:-${DEFAULT_CONFIG}}"
 
 PAIRS=$(uv run python -c "
@@ -55,23 +90,5 @@ for m in cfg['retrieval']['embed_models']:
 ")
 
 while IFS=$'\t' read -r embed_model split; do
-    safe_name=$(echo "${embed_model}_${split}" | tr '/' '_')
-    if [ "${embed_model}" = "bm25" ]; then
-        JOB_ID=$(sbatch \
-            --job-name="ret_${safe_name}" \
-            --partition=cpu \
-            "${SCRIPT_PATH}" \
-            "${embed_model}" "${split}" "${CONFIG}" \
-            | awk '{print $4}')
-    else
-        JOB_ID=$(sbatch \
-            --job-name="ret_${safe_name}" \
-            --partition=gpu \
-            --gpus=1 \
-            --constraint="a100|h100|h200|b200|l40s" \
-            "${SCRIPT_PATH}" \
-            "${embed_model}" "${split}" "${CONFIG}" \
-            | awk '{print $4}')
-    fi
-    echo "Submitted: ${embed_model} / ${split} -> job ${JOB_ID}"
+    submit_job "${embed_model}" "${split}" "${CONFIG}"
 done <<< "${PAIRS}"

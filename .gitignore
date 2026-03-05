@@ -22,3 +22,5 @@ repositories/
 window/
 inference_corpus/
 completion/
+index/
+result/

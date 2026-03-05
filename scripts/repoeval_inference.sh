@@ -1,10 +1,10 @@
 #!/bin/bash
 # Usage:
-#   bash repoeval_inference.sh [config]                              # submit all (embed_model, split, llm) jobs
-#   sbatch repoeval_inference.sh <embed_model> <split> <llm>         # run single triple (called by SLURM)
+#   bash repoeval_inference.sh [config]                                        # submit all (embed_model, split, llm) triples
+#   bash repoeval_inference.sh <embed_model> <split> <llm> [config]            # submit single triple
+#   sbatch ... repoeval_inference.sh --run <embed_model> <split> <llm> [config] # execute (called by sbatch)
 #
-# --- SLURM directives (used when called via sbatch) ---
-#SBATCH -J repoeval_inf
+# --- SLURM directives ---
 #SBATCH -p gpu
 #SBATCH -t 24:00:00
 #SBATCH -o %x_%j.out
@@ -22,12 +22,26 @@ cd "${PROJECT_DIR}"
 SCRIPT_PATH="$(realpath "$0")"
 DEFAULT_CONFIG="${PROJECT_DIR}/configs/repoeval.yaml"
 
-# --- Mode: run single (embed_model, split, llm) triple (called by sbatch) ---
-if [ -n "${SLURM_JOB_ID:-}" ]; then
-    EMBED_MODEL="${1:?Missing embed_model}"
-    SPLIT="${2:?Missing split}"
-    LLM="${3:?Missing llm}"
-    CONFIG="${4:-${DEFAULT_CONFIG}}"
+submit_job() {
+    local embed_model="$1" split="$2" llm="$3" config="$4"
+    local safe_name
+    safe_name=$(echo "${embed_model}_${split}_${llm}" | tr '/' '_')
+
+    local JOB_ID
+    JOB_ID=$(sbatch \
+        --job-name="inf_${safe_name}" \
+        --output="inf_${safe_name}_%j.out" \
+        "${SCRIPT_PATH}" --run "${embed_model}" "${split}" "${llm}" "${config}" \
+        | awk '{print $4}')
+    echo "Submitted: ${embed_model} / ${split} / ${llm} -> job ${JOB_ID}"
+}
+
+# --- Mode: execute (called by sbatch via --run flag) ---
+if [ "${1:-}" = "--run" ]; then
+    EMBED_MODEL="${2:?Missing embed_model}"
+    SPLIT="${3:?Missing split}"
+    LLM="${4:?Missing llm}"
+    CONFIG="${5:-${DEFAULT_CONFIG}}"
 
     echo "=== Inference: ${EMBED_MODEL} / ${SPLIT} / ${LLM} ==="
     echo "GPU: $(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>/dev/null || echo 'N/A')"
@@ -43,7 +57,17 @@ if [ -n "${SLURM_JOB_ID:-}" ]; then
     exit 0
 fi
 
-# --- Mode: submit all (embed_model, split, llm) triples (called by bash) ---
+# --- Mode: submit single triple ---
+if [ $# -ge 3 ] && [ "${1:-}" != "--run" ]; then
+    EMBED_MODEL="$1"
+    SPLIT="$2"
+    LLM="$3"
+    CONFIG="${4:-${DEFAULT_CONFIG}}"
+    submit_job "${EMBED_MODEL}" "${SPLIT}" "${LLM}" "${CONFIG}"
+    exit 0
+fi
+
+# --- Mode: submit all (embed_model, split, llm) triples ---
 CONFIG="${1:-${DEFAULT_CONFIG}}"
 
 TRIPLES=$(uv run python -c "
@@ -59,11 +83,5 @@ for m in cfg['retrieval']['embed_models']:
 ")
 
 while IFS=$'\t' read -r embed_model split llm; do
-    safe_name=$(echo "${embed_model}_${split}_${llm}" | tr '/' '_')
-    JOB_ID=$(sbatch \
-        --job-name="inf_${safe_name}" \
-        "${SCRIPT_PATH}" \
-        "${embed_model}" "${split}" "${llm}" "${CONFIG}" \
-        | awk '{print $4}')
-    echo "Submitted: ${embed_model} / ${split} / ${llm} -> job ${JOB_ID}"
+    submit_job "${embed_model}" "${split}" "${llm}" "${CONFIG}"
 done <<< "${TRIPLES}"
