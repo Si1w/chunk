@@ -5,6 +5,7 @@ and the original prompt from the benchmark dataset.
 """
 
 import argparse
+import os
 import time
 
 import yaml
@@ -167,6 +168,8 @@ def main():
                         help="Run only for a specific LLM (default: all).")
     parser.add_argument("--split", type=str, default=None,
                         help="Run only for a specific split: api | line (default: from config).")
+    parser.add_argument("--full", action="store_true",
+                        help="Re-run all combinations even if output files already exist.")
     args = parser.parse_args()
 
     with open(args.config, "r") as f:
@@ -197,11 +200,24 @@ def main():
         for embed_model in embed_models:
             for split in splits:
                 if embed_model == "none":
+                    out_path = FilePathBuilder.code_completion_result_path(
+                        "baseline", 0, "none", llm, split, 0, 0,
+                    )
+                    if not args.full and os.path.exists(out_path):
+                        print(f"[Skip] baseline | {split} (exists)")
+                        continue
                     inference.run_baseline(split, query["context_length"], query["prompt_type"])
                     continue
                 for max_crossfile_context in inference_cfg["max_crossfile_contexts"]:
                     for max_chunk_size in chunking["max_chunk_sizes"]:
                         for method in methods:
+                            out_path = FilePathBuilder.code_completion_result_path(
+                                method, max_chunk_size, embed_model, llm, split,
+                                retrieval_cfg["top_k"], max_crossfile_context,
+                            )
+                            if not args.full and os.path.exists(out_path):
+                                print(f"[Skip] {method} | {split} | {max_chunk_size} | {max_crossfile_context} (exists)")
+                                continue
                             inference.run_inference(
                                 method, max_chunk_size, embed_model, split,
                                 retrieval_cfg["top_k"], max_crossfile_context,

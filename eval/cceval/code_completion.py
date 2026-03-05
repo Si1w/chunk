@@ -5,6 +5,7 @@ official cceval: right-truncate CFC comments, left-truncate prompt.
 """
 
 import argparse
+import os
 import time
 
 import yaml
@@ -143,6 +144,8 @@ def main():
     parser.add_argument("--config", type=str, required=True)
     parser.add_argument("--embed_model", type=str, default=None)
     parser.add_argument("--llm", type=str, default=None)
+    parser.add_argument("--full", action="store_true",
+                        help="Re-run all combinations even if output files already exist.")
     args = parser.parse_args()
 
     with open(args.config, "r") as f:
@@ -163,11 +166,24 @@ def main():
         )
         for embed_model in embed_models:
             if embed_model == "none":
+                out_path = FilePathBuilder.code_completion_result_path(
+                    "baseline", 0, "none", llm, 0, 0,
+                )
+                if not args.full and os.path.exists(out_path):
+                    print(f"[Skip] baseline (exists)")
+                    continue
                 inference.run_baseline()
                 continue
             for max_crossfile_context in inference_cfg["max_crossfile_contexts"]:
                 for max_chunk_size in chunking["max_chunk_sizes"]:
                     for method in methods:
+                        out_path = FilePathBuilder.code_completion_result_path(
+                            method, max_chunk_size, embed_model, llm,
+                            retrieval_cfg["top_k"], max_crossfile_context,
+                        )
+                        if not args.full and os.path.exists(out_path):
+                            print(f"[Skip] {method} | {max_chunk_size} | {max_crossfile_context} (exists)")
+                            continue
                         inference.run_inference(
                             method, max_chunk_size, embed_model,
                             retrieval_cfg["top_k"], max_crossfile_context,
