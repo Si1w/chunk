@@ -71,15 +71,40 @@ fi
 CONFIG="${1:-${DEFAULT_CONFIG}}"
 
 TRIPLES=$(uv run python -c "
-import yaml
+import os, yaml
 with open('${CONFIG}') as f:
     cfg = yaml.safe_load(f)
+
 split = cfg.get('evaluation', {}).get('split', 'both')
 splits = ['api', 'line'] if split == 'both' else [split]
+chunking = cfg['chunking']
+methods = ['cast', 'function', 'declaration', 'sliding'] if chunking['method'] == 'all' else [chunking['method']]
+base_dir = os.path.join(os.path.dirname(os.path.abspath('${CONFIG}')), 'eval', 'repoeval', 'completion')
+top_k = cfg['retrieval']['top_k']
+
+def safe_name(name):
+    return name.split('/')[-1]
+
+def all_outputs_exist(embed_model, s, llm):
+    if embed_model == 'none':
+        path = os.path.join(base_dir, 'none', safe_name(llm), f'{s}_baseline_0_0_0.jsonl')
+        return os.path.exists(path)
+    for mcs in chunking['max_chunk_sizes']:
+        for method in methods:
+            for mcc in cfg['inference']['max_crossfile_contexts']:
+                path = os.path.join(base_dir, safe_name(embed_model), safe_name(llm),
+                    f'{s}_{method}_{mcs}_{mcc}_{top_k}.jsonl')
+                if not os.path.exists(path):
+                    return False
+    return True
+
 for m in cfg['retrieval']['embed_models']:
     for s in splits:
         for l in cfg['inference']['llms']:
-            print(f'{m}\t{s}\t{l}')
+            if not all_outputs_exist(m, s, l):
+                print(f'{m}\t{s}\t{l}')
+            else:
+                print(f'Skipped (exists): {m} / {s} / {l}', flush=True, file=__import__('sys').stderr)
 ")
 
 while IFS=$'\t' read -r embed_model split llm; do
