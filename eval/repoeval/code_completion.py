@@ -17,26 +17,17 @@ from .utils import Tools, FilePathBuilder, CONSTANTS
 class CodeCompletionInference:
     """Run code completion inference using vLLM with retrieved context."""
 
-    def __init__(self, llm, method, max_chunk_size, embed_model,
-                 max_generate_tokens=50, max_seq_length=8192, max_crossfile_context=2048):
-        """Initialize the code completion inference engine.
+    def __init__(self, llm, max_generate_tokens=50, max_seq_length=8192):
+        """Initialize the code completion inference engine (loads model once).
 
         Args:
             llm: HuggingFace model name for code generation.
-            method: Chunking method name.
-            max_chunk_size: Maximum chunk size used during window building.
-            embed_model: Embedding model name (used for path building).
             max_generate_tokens: Maximum number of tokens to generate.
             max_seq_length: Maximum total sequence length (prompt + generation).
-            max_crossfile_context: Maximum token budget for cross-file context.
         """
-        self.method = method
-        self.max_chunk_size = max_chunk_size
-        self.embed_model = embed_model
         self.llm_name = llm
         self.max_generate_tokens = max_generate_tokens
         self.max_seq_length = max_seq_length
-        self.max_crossfile_context = max_crossfile_context
 
         self.model = LLM(model=llm, max_model_len=max_seq_length)
         self.tokenizer = self.model.get_tokenizer()
@@ -62,12 +53,13 @@ class CodeCompletionInference:
         content_lines = [f"# {line}" for line in content.splitlines()]
         return "\n".join([header, fpath_str] + content_lines) + "\n"
 
-    def _build_prompt(self, prompt, retrieved_windows):
+    def _build_prompt(self, prompt, retrieved_windows, max_crossfile_context):
         """Build the final prompt by prepending retrieved cross-file context.
 
         Args:
             prompt: Original code prompt from the benchmark.
             retrieved_windows: List of retrieved window dicts.
+            max_crossfile_context: Maximum token budget for cross-file context.
 
         Returns:
             Full prompt string with cross-file context prepended.
@@ -81,13 +73,13 @@ class CodeCompletionInference:
         for window in retrieved_windows:
             block = self._make_a_block(window)
             block_tokens = len(self.tokenizer.encode(block))
-            if cur_tokens + block_tokens < min(context_budget, self.max_crossfile_context):
+            if cur_tokens + block_tokens < min(context_budget, max_crossfile_context):
                 prepend_blocks.append(block)
                 cur_tokens += block_tokens
 
         return prepend_context + "".join(prepend_blocks) + prompt + "\n"
 
-    def run_inference(self, method, max_chunk_size, embed_model, split, top_k):
+    def run_inference(self, method, max_chunk_size, embed_model, split, top_k, max_crossfile_context):
         """Run code completion over the inference corpus and save results.
 
         Args:
@@ -96,13 +88,14 @@ class CodeCompletionInference:
             embed_model: Embedding model name (for path building).
             split: Dataset split ('api' or 'line').
             top_k: Number of retrieved windows used.
+            max_crossfile_context: Maximum token budget for cross-file context.
         """
         corpus_path = FilePathBuilder.inference_corpus_path(method, max_chunk_size, embed_model, split, top_k)
         inference_corpus = Tools.load_jsonl(corpus_path)
 
         prompts = []
         for corpus in inference_corpus:
-            inference_prompt = self._build_prompt(corpus["prompt"], corpus["retrieved_windows"])
+            inference_prompt = self._build_prompt(corpus["prompt"], corpus["retrieved_windows"], max_crossfile_context)
             prompts.append(inference_prompt)
 
         start_time = time.time()
@@ -124,7 +117,7 @@ class CodeCompletionInference:
         print(f"[Time] {method} | {split} | total: {total_time}s | samples: {len(code_completions) - 1}")
 
         out_path = FilePathBuilder.code_completion_result_path(
-            method, max_chunk_size, self.embed_model, self.llm_name, split, top_k, self.max_crossfile_context,
+            method, max_chunk_size, embed_model, self.llm_name, split, top_k, max_crossfile_context,
         )
         Tools.dump_jsonl(code_completions, out_path)
 
@@ -196,25 +189,22 @@ def main():
         splits = [eval_split]
 
     for llm in llms:
-        for max_crossfile_context in inference_cfg["max_crossfile_contexts"]:
-            inference = CodeCompletionInference(
-                llm=llm,
-                method=methods[0],
-                max_chunk_size=chunking["max_chunk_sizes"][0],
-                embed_model=embed_models[0],
-                max_generate_tokens=inference_cfg["max_generate_tokens"],
-                max_seq_length=inference_cfg["max_seq_length"],
-                max_crossfile_context=max_crossfile_context,
-            )
-            for embed_model in embed_models:
-                for split in splits:
-                    if embed_model == "none":
-                        inference.run_baseline(split, query["context_length"], query["prompt_type"])
-                        continue
+        inference = CodeCompletionInference(
+            llm=llm,
+            max_generate_tokens=inference_cfg["max_generate_tokens"],
+            max_seq_length=inference_cfg["max_seq_length"],
+        )
+        for embed_model in embed_models:
+            for split in splits:
+                if embed_model == "none":
+                    inference.run_baseline(split, query["context_length"], query["prompt_type"])
+                    continue
+                for max_crossfile_context in inference_cfg["max_crossfile_contexts"]:
                     for max_chunk_size in chunking["max_chunk_sizes"]:
                         for method in methods:
                             inference.run_inference(
-                                method, max_chunk_size, embed_model, split, retrieval_cfg["top_k"],
+                                method, max_chunk_size, embed_model, split,
+                                retrieval_cfg["top_k"], max_crossfile_context,
                             )
 
 

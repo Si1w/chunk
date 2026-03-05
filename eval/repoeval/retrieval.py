@@ -17,19 +17,15 @@ from .utils import Tools, FilePathBuilder, CONSTANTS, is_context_file
 class Retriever:
     """Build indices and perform retrieval over code windows."""
 
-    def __init__(self, repos, method, max_chunk_size, embed_model="Qwen/Qwen3-Embedding-0.6B", batch_size=32):
-        """Initialize the retriever.
+    def __init__(self, repos, embed_model="Qwen/Qwen3-Embedding-0.6B", batch_size=32):
+        """Initialize the retriever (loads model once).
 
         Args:
             repos: List of repository names.
-            method: Chunking method name.
-            max_chunk_size: Maximum chunk size used during window building.
             embed_model: HuggingFace model name for embeddings, or 'bm25' for lexical retrieval.
             batch_size: Batch size for embedding inference.
         """
         self.repos = repos
-        self.method = method
-        self.max_chunk_size = max_chunk_size
         self.embed_model = embed_model
         self.batch_size = batch_size
         self.is_bm25 = embed_model == "bm25"
@@ -43,13 +39,13 @@ class Retriever:
         embeddings = self.model.encode(texts, batch_size=self.batch_size, show_progress_bar=True, convert_to_numpy=True)
         return np.array(embeddings, dtype="float32")
 
-    def _ensure_index(self, repo, rebuild=False):
+    def _ensure_index(self, repo, method, max_chunk_size, rebuild=False):
         """Build index for a repo if it doesn't exist, then load it."""
         index_path = FilePathBuilder.index_window_path(
-            repo, self.method, self.max_chunk_size, self.embed_model,
+            repo, method, max_chunk_size, self.embed_model,
         )
         if not os.path.exists(index_path) or rebuild:
-            window_path = FilePathBuilder.repo_windows_path(repo, self.method, self.max_chunk_size)
+            window_path = FilePathBuilder.repo_windows_path(repo, method, max_chunk_size)
             windows = Tools.load_jsonl(window_path)
             code_contents = [w["context"] for w in windows]
 
@@ -86,10 +82,13 @@ class Retriever:
             scores, indices = index.search(query_embedding, k)
             return indices[0], scores[0]
 
-    def retrieval(self, split, context_length, prompt_type, top_k, num_queries=None, rebuild=False):
+    def retrieval(self, method, max_chunk_size, split, context_length, prompt_type, top_k,
+                  num_queries=None, rebuild=False):
         """Retrieve top-k windows for each query and save inference corpus.
 
         Args:
+            method: Chunking method name.
+            max_chunk_size: Maximum chunk size used during window building.
             split: Dataset split ('api' or 'line').
             context_length: Context length variant (e.g. '2k').
             prompt_type: Prompt type ('codex' or 'codegen').
@@ -112,8 +111,8 @@ class Retriever:
         for query_line in tqdm(query_lines, desc=f"{label} retrieving top-{top_k} for {split}"):
             repo = query_line["metadata"]["repo"]
             if repo != cur_repo:
-                index = self._ensure_index(repo, rebuild=rebuild)
-                windows_path = FilePathBuilder.repo_windows_path(repo, self.method, self.max_chunk_size)
+                index = self._ensure_index(repo, method, max_chunk_size, rebuild=rebuild)
+                windows_path = FilePathBuilder.repo_windows_path(repo, method, max_chunk_size)
                 windows = Tools.load_jsonl(windows_path)
                 cur_repo = repo
 
@@ -139,7 +138,7 @@ class Retriever:
             })
 
         out_path = FilePathBuilder.inference_corpus_path(
-            self.method, self.max_chunk_size, self.embed_model, split, top_k,
+            method, max_chunk_size, self.embed_model, split, top_k,
         )
         Tools.dump_jsonl(inference_corpus, out_path)
 
@@ -177,15 +176,17 @@ def main():
     for embed_model in embed_models:
         if embed_model == "none":
             continue
+        retriever = Retriever(
+            CONSTANTS.REPOs,
+            embed_model=embed_model,
+            batch_size=retrieval_cfg.get("batch_size", 32),
+        )
         for split in splits:
             for max_chunk_size in chunking["max_chunk_sizes"]:
                 for method in methods:
-                    retriever = Retriever(
-                        CONSTANTS.REPOs, method, max_chunk_size=max_chunk_size,
-                        embed_model=embed_model,
-                        batch_size=retrieval_cfg.get("batch_size", 32),
-                    )
                     retriever.retrieval(
+                        method=method,
+                        max_chunk_size=max_chunk_size,
                         split=split,
                         context_length=query["context_length"],
                         prompt_type=query["prompt_type"],
