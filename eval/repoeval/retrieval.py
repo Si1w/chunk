@@ -165,6 +165,8 @@ def main():
     embed_models = [args.embed_model] if args.embed_model else retrieval_cfg["embed_models"]
 
     for embed_model in embed_models:
+        if embed_model == "none":
+            continue
         for max_chunk_size in chunking["max_chunk_sizes"]:
             for method in methods:
                 retriever = Retriever(

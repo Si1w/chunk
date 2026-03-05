@@ -13,7 +13,7 @@
 #SBATCH -c 8
 #SBATCH --mem=64G
 #SBATCH -G 1
-#SBATCH -C a100
+#SBATCH -C "a100|h100|h200|b200|l40s"
 
 set -euo pipefail
 
