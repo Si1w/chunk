@@ -5,7 +5,9 @@ chunking:
   language: python
   method: all                 # function | declaration | sliding | all
   max_chunk_sizes:
+    - 1000
     - 2000
+    - 3000
   metadata_template: repoeval
   overlap_lines: 15           # sliding window overlap
   chunk_expansion: false
@@ -37,6 +39,8 @@ inference:
   max_seq_length: 8192
   max_crossfile_contexts:
     - 2048
+    - 4096
+    - 8192
   max_generate_tokens: 50
 
 # --- Evaluation ---

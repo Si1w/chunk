@@ -16,12 +16,6 @@ class CONSTANTS:
         "alibaba_FederatedScope",
         "pytorch_rl",
         "opendilab_ACE",
-        "amazon-science_patchcore-inspection",
-        "deepmind_tracr",
-        "facebookresearch_omnivore",
-        "google_lightweight_mmm",
-        "lucidrains_imagen-pytorch",
-        "maxhumber_redframes",
     ]
 
 

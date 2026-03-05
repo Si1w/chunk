@@ -14,3 +14,11 @@ __pycache__/
 .DS_Store
 
 # Repository
+
+## RepoEval
+datasets/
+query/
+repositories/
+window/
+inference_corpus/
+completion/
