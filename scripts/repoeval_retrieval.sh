@@ -5,15 +5,12 @@
 #
 # --- SLURM directives (used when called via sbatch) ---
 #SBATCH -J repoeval_ret
-#SBATCH -p gpu
 #SBATCH -t 12:00:00
 #SBATCH -o %x_%j.out
 #SBATCH -N 1
 #SBATCH -n 1
 #SBATCH -c 8
 #SBATCH --mem=64G
-#SBATCH -G 1
-#SBATCH -C "a100|h100|h200|b200|l40s"
 
 set -euo pipefail
 
@@ -63,14 +60,15 @@ while IFS=$'\t' read -r embed_model split; do
         JOB_ID=$(sbatch \
             --job-name="ret_${safe_name}" \
             --partition=cpu \
-            --gres="" \
-            --constraint="" \
             "${SCRIPT_PATH}" \
             "${embed_model}" "${split}" "${CONFIG}" \
             | awk '{print $4}')
     else
         JOB_ID=$(sbatch \
             --job-name="ret_${safe_name}" \
+            --partition=gpu \
+            --gpus=1 \
+            --constraint="a100|h100|h200|b200|l40s" \
             "${SCRIPT_PATH}" \
             "${embed_model}" "${split}" "${CONFIG}" \
             | awk '{print $4}')
