@@ -3,7 +3,7 @@
 # --- Chunking ---
 chunking:
   language: python
-  method: all                 # function | declaration | sliding | all
+  method: all                 # cast | function | declaration | sliding | all
   max_chunk_sizes:
     - 1000
     - 2000

@@ -27,15 +27,15 @@ submit_job() {
     local JOB_ID
     if [ "${embed_model}" = "bm25" ]; then
         JOB_ID=$(sbatch \
-            --job-name="ret_${safe_name}" \
-            --output="ret_${safe_name}_%j.out" \
+            --job-name="repoeval_ret_${safe_name}" \
+            --output="repoeval_ret_${safe_name}_%j.out" \
             --partition=cpu \
             "${SCRIPT_PATH}" --run "${embed_model}" "${split}" "${config}" \
             | awk '{print $4}')
     else
         JOB_ID=$(sbatch \
-            --job-name="ret_${safe_name}" \
-            --output="ret_${safe_name}_%j.out" \
+            --job-name="repoeval_ret_${safe_name}" \
+            --output="repoeval_ret_${safe_name}_%j.out" \
             --partition=gpu \
             --gpus=1 \
             --constraint="a100|h100|h200|b200|l40s" \

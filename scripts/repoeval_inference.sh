@@ -29,8 +29,8 @@ submit_job() {
 
     local JOB_ID
     JOB_ID=$(sbatch \
-        --job-name="inf_${safe_name}" \
-        --output="inf_${safe_name}_%j.out" \
+        --job-name="repoeval_inf_${safe_name}" \
+        --output="repoeval_inf_${safe_name}_%j.out" \
         "${SCRIPT_PATH}" --run "${embed_model}" "${split}" "${llm}" "${config}" \
         | awk '{print $4}')
     echo "Submitted: ${embed_model} / ${split} / ${llm} -> job ${JOB_ID}"
