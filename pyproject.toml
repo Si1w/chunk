@@ -2,7 +2,7 @@
 name = "chunk"
 version = "0.1.0"
 description = "Structure-aware code chunking library"
-requires-python = ">=3.11"
+requires-python = "==3.12.*"
 dependencies = [
     "astchunk",
     "numpy",

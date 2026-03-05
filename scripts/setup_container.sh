@@ -35,12 +35,9 @@ echo "Done: ${SIF}"
 PROJECT_DIR="${SLURM_SUBMIT_DIR}"
 UV_BIN="$(which uv)"
 
-echo "PROJECT_DIR=${PROJECT_DIR}"
-echo "UV_BIN=${UV_BIN}"
 echo "Syncing dependencies..."
 singularity exec \
-    -B "/users/${USER},/scratch/users/${USER}" \
-    --cwd "${PROJECT_DIR}" \
-    "${SIF}" "${UV_BIN}" sync --all-extras
+    -B "/users/${USER},/scratch/users/${USER},/cephfs" \
+    "${SIF}" bash -c "cd ${PROJECT_DIR} && ${UV_BIN} sync --all-extras"
 
 echo "Done: uv sync"

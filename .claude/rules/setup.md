@@ -23,6 +23,15 @@ All code runs on a HPC cluster (SLURM). Follow the instructions below to set up 
 
 - Runtime: Singularity
 - Use a single broadly compatible image (e.g., `docker://nvcr.io/nvidia/pytorch:<tag>`) to support all GPU types without per-GPU switching
+- Singularity is only accessible from compute nodes; always submit via sbatch, never run on login nodes
+
+#### Singularity Pitfalls
+
+- `--pwd` and `--cwd` may not work reliably; use `bash -c "cd /path && cmd"` instead
+- `/scratch/users/$USER` is a symlink to `/cephfs/volumes/...`; bind `/cephfs` in addition to `/scratch` so paths resolve inside the container
+- Always bind `/users/$USER` so host-installed tools (e.g., `uv`) are accessible inside the container
+- Use `--bind` with comma-separated paths: `--bind "/users/${USER},/scratch/users/${USER},/cephfs"`
+- `$(dirname "$0")` resolves to slurmd temp dir under sbatch; use `${SLURM_SUBMIT_DIR}` for the project directory
 
 ### Storage
 
