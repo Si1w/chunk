@@ -17,11 +17,10 @@
 
 set -euo pipefail
 
-PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-source "$(dirname "$0")/container.env"
+PROJECT_DIR="${SLURM_SUBMIT_DIR}"
 CONFIG="${1:-${PROJECT_DIR}/configs/repoeval_pilot.yaml}"
 
-NUM_QUERIES=$(cd "${PROJECT_DIR}" && uv_run python -c "
+NUM_QUERIES=$(cd "${PROJECT_DIR}" && uv run python -c "
 import yaml
 with open('${CONFIG}') as f:
     cfg = yaml.safe_load(f)
@@ -37,18 +36,18 @@ cd "${PROJECT_DIR}"
 
 # Step 1: Chunking
 echo "--- Step 1: Chunking ---"
-uv_run python -m eval.repoeval.make_window --config "${CONFIG}"
+uv run python -m eval.repoeval.make_window --config "${CONFIG}"
 
 # Step 2: Retrieval (indices built on demand)
 echo "--- Step 2: Retrieval ---"
-uv_run python -m eval.repoeval.retrieval --config "${CONFIG}" --num_queries "${NUM_QUERIES}"
+uv run python -m eval.repoeval.retrieval --config "${CONFIG}" --num_queries "${NUM_QUERIES}"
 
 # Step 3: Code Completion
 echo "--- Step 3: Code Completion ---"
-uv_run python -m eval.repoeval.code_completion --config "${CONFIG}"
+uv run python -m eval.repoeval.code_completion --config "${CONFIG}"
 
 # Step 4: Compute Scores
 echo "--- Step 4: Compute Scores ---"
-uv_run python -m eval.repoeval.compute_score --config "${CONFIG}"
+uv run python -m eval.repoeval.compute_score --config "${CONFIG}"
 
 echo "=== Pilot Done: $(date) ==="

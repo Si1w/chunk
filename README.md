@@ -54,15 +54,13 @@ uv run python examples/chunking.py --method function   # or declaration, sliding
 The `eval/` module implements a full evaluation pipeline on the [RepoEval](https://github.com/microsoft/CodeT) benchmark:
 chunking → retrieval → code completion → scoring.
 
-### Container Setup
+### Environment Setup
 
-All experiments run inside a Singularity container for reproducibility. One-time setup:
+One-time setup to sync Python dependencies on a compute node:
 
 ```bash
-sbatch scripts/setup_container.sh
+sbatch scripts/setup_venv.sh
 ```
-
-This pulls the NVIDIA PyTorch image to `/scratch/users/$USER/images/` and syncs Python dependencies. All subsequent steps use the container via `singularity exec`.
 
 ### 1. Fetch Dataset & Chunking
 

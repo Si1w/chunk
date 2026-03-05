@@ -18,18 +18,18 @@
 
 set -euo pipefail
 
-PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-source "$(dirname "$0")/container.env"
+PROJECT_DIR="${SLURM_SUBMIT_DIR}"
 CONFIG="${PROJECT_DIR}/configs/repoeval.yaml"
+cd "${PROJECT_DIR}"
 
 echo "=== Fetch Dataset ==="
 echo "Start: $(date)"
 
-uv_run python -m eval.repoeval.fetch_dataset
+uv run python -m eval.repoeval.fetch_dataset
 
 echo "=== Chunking ==="
 echo "Config: ${CONFIG}"
 
-uv_run python -m eval.repoeval.make_window --config "${CONFIG}"
+uv run python -m eval.repoeval.make_window --config "${CONFIG}"
 
 echo "=== Done: $(date) ==="

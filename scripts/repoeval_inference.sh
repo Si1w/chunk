@@ -18,8 +18,7 @@
 
 set -euo pipefail
 
-PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-source "$(dirname "$0")/container.env"
+PROJECT_DIR="${SLURM_SUBMIT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
 SCRIPT_PATH="$(realpath "$0")"
 DEFAULT_CONFIG="${PROJECT_DIR}/configs/repoeval.yaml"
 
@@ -34,7 +33,7 @@ if [ -n "${SLURM_JOB_ID:-}" ]; then
     echo "Start: $(date)"
 
     cd "${PROJECT_DIR}"
-    uv_run python -m eval.repoeval.code_completion \
+    uv run python -m eval.repoeval.code_completion \
         --config "${CONFIG}" \
         --embed_model "${EMBED_MODEL}" \
         --llm "${LLM}"
@@ -46,7 +45,7 @@ fi
 # --- Mode: submit all pairs (called by bash) ---
 CONFIG="${1:-${DEFAULT_CONFIG}}"
 
-PAIRS=$(cd "${PROJECT_DIR}" && uv_run python -c "
+PAIRS=$(cd "${PROJECT_DIR}" && uv run python -c "
 import yaml
 with open('${CONFIG}') as f:
     cfg = yaml.safe_load(f)
@@ -77,7 +76,7 @@ SCORE_ID=$(sbatch \
     --mem=16G \
     --output=%x_%j.out \
     --error=%x_%j.err \
-    --wrap="source ${PROJECT_DIR}/scripts/container.env && cd ${PROJECT_DIR} && uv_run python -m eval.repoeval.compute_score --config ${CONFIG}" \
+    --wrap="cd ${PROJECT_DIR} && uv run python -m eval.repoeval.compute_score --config ${CONFIG}" \
     | awk '{print $4}')
 
 echo ""
