@@ -54,29 +54,25 @@ uv run python examples/chunking.py --method function   # or declaration, sliding
 The `eval/` module implements a full evaluation pipeline on the [RepoEval](https://github.com/microsoft/CodeT) benchmark:
 chunking → retrieval → code completion → scoring.
 
-### Container Setup (Optional)
+### Container Setup
 
-All experiments can run inside a Singularity container for reproducibility. One-time setup:
-
-```bash
-bash scripts/setup_container.sh
-```
-
-This pulls the NVIDIA PyTorch image to `/scratch/users/$USER/images/`. The SLURM scripts automatically use the container via `singularity exec --nv`.
-
-### 1. Fetch Dataset
+All experiments run inside a Singularity container for reproducibility. One-time setup:
 
 ```bash
-uv run python -m eval.repoeval.fetch_dataset
+sbatch scripts/setup_container.sh
 ```
 
-### 2. Chunking
+This pulls the NVIDIA PyTorch image to `/scratch/users/$USER/images/` and syncs Python dependencies. All subsequent steps use the container via `singularity exec`.
+
+### 1. Fetch Dataset & Chunking
+
+Fetches the RepoEval dataset from GitHub and builds code windows using the configured chunking strategies.
 
 ```bash
-uv run python -m eval.repoeval.make_window --config configs/repoeval.yaml
+sbatch scripts/repoeval_chunking.sh
 ```
 
-### 3. Retrieval
+### 2. Retrieval
 
 Supports BM25 (sparse) and dense embedding models (SentenceTransformers + FAISS).
 
@@ -88,7 +84,7 @@ bash scripts/repoeval_retrieval.sh configs/repoeval.yaml
 uv run python -m eval.repoeval.retrieval --config configs/repoeval.yaml --embed_model bm25
 ```
 
-### 4. Code Completion (Inference)
+### 3. Code Completion (Inference)
 
 Uses vLLM for batched code generation. Requires GPU.
 
@@ -101,7 +97,7 @@ uv run python -m eval.repoeval.code_completion --config configs/repoeval.yaml \
     --embed_model bm25 --llm Qwen/Qwen2.5-Coder-7B
 ```
 
-### 5. Compute Scores
+### 4. Compute Scores
 
 Computes Exact Match (EM) and Edit Similarity (ES) metrics, outputs a CSV summary.
 

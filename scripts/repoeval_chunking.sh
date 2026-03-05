@@ -22,9 +22,13 @@ PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 source "$(dirname "$0")/container.env"
 CONFIG="${PROJECT_DIR}/configs/repoeval.yaml"
 
+echo "=== Fetch Dataset ==="
+echo "Start: $(date)"
+
+uv_run python -m eval.repoeval.fetch_dataset
+
 echo "=== Chunking ==="
 echo "Config: ${CONFIG}"
-echo "Start: $(date)"
 
 uv_run python -m eval.repoeval.make_window --config "${CONFIG}"
 
