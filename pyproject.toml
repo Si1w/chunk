@@ -22,6 +22,7 @@ eval = [
     "pyyaml",
     "requests",
     "sentence-transformers",
+    "thefuzz",
     "tqdm",
     "vllm",
 ]
