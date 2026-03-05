@@ -10,11 +10,12 @@ from collections import defaultdict
 
 import yaml
 from tqdm import tqdm
-from chunk import SlidingChunkBuilder, FunctionChunkBuilder, DeclarationChunkBuilder
+from chunk import CASTChunkBuilder, SlidingChunkBuilder, FunctionChunkBuilder, DeclarationChunkBuilder
 
 from .utils import Tools, FilePathBuilder, CONSTANTS
 
 METHODS = {
+    "cast": CASTChunkBuilder,
     "function": FunctionChunkBuilder,
     "declaration": DeclarationChunkBuilder,
     "sliding": SlidingChunkBuilder,
