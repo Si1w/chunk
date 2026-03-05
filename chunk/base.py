@@ -9,7 +9,7 @@ import tree_sitter_java as tsjava
 import tree_sitter_c_sharp as tscsharp
 import tree_sitter_typescript as tstypescript
 
-from .utils import CLASS_TYPES, FUNCTION_TYPES
+from .utils import CLASS_TYPES, FUNCTION_TYPES, build_metadata
 from astchunk.astnode import ASTNode
 from astchunk.astchunk import ASTChunk
 from astchunk.preprocessing import ByteRange, preprocess_nws_count, get_nws_count
@@ -155,7 +155,14 @@ class ASTChunkBuilder(ABC):
                 language=self.language,
                 metadata_template=self.metadata_template,
             )
-            chunk.build_metadata(repo_level_metadata)
+            chunk.metadata = build_metadata(
+                metadata_template=self.metadata_template,
+                repo_level_metadata=repo_level_metadata,
+                chunk_size=chunk.chunk_size,
+                length=chunk.length,
+                start_line=chunk.start_line,
+                end_line=chunk.end_line,
+            )
             if chunk_expansion:
                 chunk.apply_chunk_expansion()
             chunks.append(chunk)
