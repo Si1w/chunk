@@ -18,7 +18,8 @@
 
 set -euo pipefail
 
-PROJECT_DIR="${SLURM_SUBMIT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
+PROJECT_DIR="${SLURM_SUBMIT_DIR}"
+cd "${PROJECT_DIR}"
 SCRIPT_PATH="$(realpath "$0")"
 DEFAULT_CONFIG="${PROJECT_DIR}/configs/repoeval.yaml"
 
@@ -32,7 +33,6 @@ if [ -n "${SLURM_JOB_ID:-}" ]; then
     echo "GPU: $(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>/dev/null || echo 'N/A')"
     echo "Start: $(date)"
 
-    cd "${PROJECT_DIR}"
     uv run python -m eval.repoeval.code_completion \
         --config "${CONFIG}" \
         --embed_model "${EMBED_MODEL}" \
@@ -45,7 +45,7 @@ fi
 # --- Mode: submit all pairs (called by bash) ---
 CONFIG="${1:-${DEFAULT_CONFIG}}"
 
-PAIRS=$(cd "${PROJECT_DIR}" && uv run python -c "
+PAIRS=$(uv run python -c "
 import yaml
 with open('${CONFIG}') as f:
     cfg = yaml.safe_load(f)

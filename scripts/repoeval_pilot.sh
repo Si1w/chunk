@@ -18,9 +18,10 @@
 set -euo pipefail
 
 PROJECT_DIR="${SLURM_SUBMIT_DIR}"
+cd "${PROJECT_DIR}"
 CONFIG="${1:-${PROJECT_DIR}/configs/repoeval_pilot.yaml}"
 
-NUM_QUERIES=$(cd "${PROJECT_DIR}" && uv run python -c "
+NUM_QUERIES=$(uv run python -c "
 import yaml
 with open('${CONFIG}') as f:
     cfg = yaml.safe_load(f)
@@ -32,8 +33,6 @@ echo "Config: ${CONFIG}"
 echo "Queries: ${NUM_QUERIES}"
 echo "GPU: $(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>/dev/null || echo 'N/A')"
 echo "Start: $(date)"
-cd "${PROJECT_DIR}"
-
 # Step 1: Chunking
 echo "--- Step 1: Chunking ---"
 uv run python -m eval.repoeval.make_window --config "${CONFIG}"
