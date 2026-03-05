@@ -28,7 +28,7 @@ retrieval:
     - bm25
     - Qwen/Qwen3-Embedding-0.6B
   batch_size: 32
-  top_k: 3
+  top_k: 10
 
 # --- Inference ---
 inference:
