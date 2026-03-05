@@ -78,8 +78,8 @@ Supports BM25 (sparse) and dense embedding models (SentenceTransformers + FAISS)
 # Run all embed models defined in config
 bash scripts/repoeval_retrieval.sh configs/repoeval.yaml
 
-# Or run a single model
-uv run python -m eval.repoeval.retrieval --config configs/repoeval.yaml --embed_model bm25
+# Or run a single (embed_model, split) pair
+uv run python -m eval.repoeval.retrieval --config configs/repoeval.yaml --embed_model bm25 --split api
 ```
 
 ### 3. Code Completion (Inference)
@@ -87,12 +87,12 @@ uv run python -m eval.repoeval.retrieval --config configs/repoeval.yaml --embed_
 Uses vLLM for batched code generation. Requires GPU.
 
 ```bash
-# Submit all (embed_model, llm) pairs as SLURM jobs
+# Submit all (embed_model, split, llm) triples as SLURM jobs
 bash scripts/repoeval_inference.sh configs/repoeval.yaml
 
-# Or run a single pair
+# Or run a single triple
 uv run python -m eval.repoeval.code_completion --config configs/repoeval.yaml \
-    --embed_model bm25 --llm Qwen/Qwen2.5-Coder-7B
+    --embed_model bm25 --split api --llm Qwen/Qwen2.5-Coder-7B
 ```
 
 ### 4. Compute Scores
@@ -100,7 +100,7 @@ uv run python -m eval.repoeval.code_completion --config configs/repoeval.yaml \
 Computes Exact Match (EM) and Edit Similarity (ES) metrics, outputs a CSV summary.
 
 ```bash
-uv run python -m eval.repoeval.compute_score --config configs/repoeval.yaml
+sbatch scripts/repoeval_score.sh configs/repoeval.yaml
 ```
 
 ### Pilot Experiment

@@ -40,7 +40,6 @@ All code runs on a HPC cluster (SLURM). Follow the instructions below to set up 
 #SBATCH -p <gpu|cpu>                 # partition
 #SBATCH -t 30:00:00                  # time limit (max 48h)
 #SBATCH -o %x_%j.out                # stdout: <job_name>_<job_id>.out
-#SBATCH -e %x_%j.err                # stderr
 
 # --- Resources ---
 #SBATCH -N <n>                       # nodes

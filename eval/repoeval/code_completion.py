@@ -172,6 +172,8 @@ def main():
                         help="Run only for a specific embed model (default: all).")
     parser.add_argument("--llm", type=str, default=None,
                         help="Run only for a specific LLM (default: all).")
+    parser.add_argument("--split", type=str, default=None,
+                        help="Run only for a specific split: api | line (default: from config).")
     args = parser.parse_args()
 
     with open(args.config, "r") as f:
@@ -185,6 +187,14 @@ def main():
     embed_models = [args.embed_model] if args.embed_model else retrieval_cfg["embed_models"]
     llms = [args.llm] if args.llm else inference_cfg["llms"]
 
+    eval_split = cfg.get("evaluation", {}).get("split", "both")
+    if args.split:
+        splits = [args.split]
+    elif eval_split == "both":
+        splits = ["api", "line"]
+    else:
+        splits = [eval_split]
+
     for llm in llms:
         for max_crossfile_context in inference_cfg["max_crossfile_contexts"]:
             inference = CodeCompletionInference(
@@ -197,16 +207,15 @@ def main():
                 max_crossfile_context=max_crossfile_context,
             )
             for embed_model in embed_models:
-                if embed_model == "none":
-                    split = query.get("split", "api")
-                    inference.run_baseline(split, query["context_length"], query["prompt_type"])
-                    continue
-                for max_chunk_size in chunking["max_chunk_sizes"]:
-                    for method in methods:
-                        split = query.get("split", "api")
-                        inference.run_inference(
-                            method, max_chunk_size, embed_model, split, retrieval_cfg["top_k"],
-                        )
+                for split in splits:
+                    if embed_model == "none":
+                        inference.run_baseline(split, query["context_length"], query["prompt_type"])
+                        continue
+                    for max_chunk_size in chunking["max_chunk_sizes"]:
+                        for method in methods:
+                            inference.run_inference(
+                                method, max_chunk_size, embed_model, split, retrieval_cfg["top_k"],
+                            )
 
 
 if __name__ == "__main__":

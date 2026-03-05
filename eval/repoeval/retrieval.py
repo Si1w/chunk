@@ -151,6 +151,8 @@ def main():
     parser.add_argument("--rebuild", action="store_true", help="Rebuild index even if it exists.")
     parser.add_argument("--embed_model", type=str, default=None,
                         help="Run only for a specific embed model (default: all).")
+    parser.add_argument("--split", type=str, default=None,
+                        help="Run only for a specific split: api | line (default: from config).")
     parser.add_argument("--num_queries", type=int, default=None,
                         help="Limit number of queries (for pilot runs).")
     args = parser.parse_args()
@@ -164,24 +166,33 @@ def main():
     methods = list({"function", "declaration", "sliding"}) if chunking["method"] == "all" else [chunking["method"]]
     embed_models = [args.embed_model] if args.embed_model else retrieval_cfg["embed_models"]
 
+    eval_split = cfg.get("evaluation", {}).get("split", "both")
+    if args.split:
+        splits = [args.split]
+    elif eval_split == "both":
+        splits = ["api", "line"]
+    else:
+        splits = [eval_split]
+
     for embed_model in embed_models:
         if embed_model == "none":
             continue
-        for max_chunk_size in chunking["max_chunk_sizes"]:
-            for method in methods:
-                retriever = Retriever(
-                    CONSTANTS.REPOs, method, max_chunk_size=max_chunk_size,
-                    embed_model=embed_model,
-                    batch_size=retrieval_cfg.get("batch_size", 32),
-                )
-                retriever.retrieval(
-                    split=query.get("split", "api"),
-                    context_length=query["context_length"],
-                    prompt_type=query["prompt_type"],
-                    top_k=retrieval_cfg["top_k"],
-                    num_queries=args.num_queries,
-                    rebuild=args.rebuild,
-                )
+        for split in splits:
+            for max_chunk_size in chunking["max_chunk_sizes"]:
+                for method in methods:
+                    retriever = Retriever(
+                        CONSTANTS.REPOs, method, max_chunk_size=max_chunk_size,
+                        embed_model=embed_model,
+                        batch_size=retrieval_cfg.get("batch_size", 32),
+                    )
+                    retriever.retrieval(
+                        split=split,
+                        context_length=query["context_length"],
+                        prompt_type=query["prompt_type"],
+                        top_k=retrieval_cfg["top_k"],
+                        num_queries=args.num_queries,
+                        rebuild=args.rebuild,
+                    )
 
 
 if __name__ == "__main__":

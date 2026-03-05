@@ -7,7 +7,6 @@
 #SBATCH -p gpu
 #SBATCH -t 02:00:00
 #SBATCH -o %x_%j.out
-#SBATCH -e %x_%j.err
 #SBATCH -N 1
 #SBATCH -n 1
 #SBATCH -c 8

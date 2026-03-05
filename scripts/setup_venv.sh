@@ -8,7 +8,6 @@
 #SBATCH -p cpu
 #SBATCH -t 01:00:00
 #SBATCH -o %x_%j.out
-#SBATCH -e %x_%j.err
 #SBATCH -N 1
 #SBATCH -n 1
 #SBATCH -c 4

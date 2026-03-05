@@ -1,14 +1,13 @@
 #!/bin/bash
 # Usage:
-#   bash repoeval_retrieval.sh [config]                  # submit one job per embed_model
-#   sbatch repoeval_retrieval.sh <embed_model>           # run single model (called by SLURM)
+#   bash repoeval_retrieval.sh [config]                          # submit one job per (embed_model, split)
+#   sbatch repoeval_retrieval.sh <embed_model> <split>           # run single pair (called by SLURM)
 #
 # --- SLURM directives (used when called via sbatch) ---
 #SBATCH -J repoeval_ret
 #SBATCH -p gpu
 #SBATCH -t 12:00:00
 #SBATCH -o %x_%j.out
-#SBATCH -e %x_%j.err
 #SBATCH -N 1
 #SBATCH -n 1
 #SBATCH -c 8
@@ -23,40 +22,43 @@ cd "${PROJECT_DIR}"
 SCRIPT_PATH="$(realpath "$0")"
 DEFAULT_CONFIG="${PROJECT_DIR}/configs/repoeval.yaml"
 
-# --- Mode: run single model (called by sbatch) ---
+# --- Mode: run single (embed_model, split) pair (called by sbatch) ---
 if [ -n "${SLURM_JOB_ID:-}" ]; then
     EMBED_MODEL="${1:?Missing embed_model}"
-    CONFIG="${2:-${DEFAULT_CONFIG}}"
+    SPLIT="${2:?Missing split}"
+    CONFIG="${3:-${DEFAULT_CONFIG}}"
 
-    echo "=== Retrieval: ${EMBED_MODEL} ==="
+    echo "=== Retrieval: ${EMBED_MODEL} / ${SPLIT} ==="
     echo "GPU: $(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>/dev/null || echo 'N/A')"
     echo "Start: $(date)"
 
     uv run python -m eval.repoeval.retrieval \
         --config "${CONFIG}" \
-        --embed_model "${EMBED_MODEL}"
+        --embed_model "${EMBED_MODEL}" \
+        --split "${SPLIT}"
 
     echo "=== Done: $(date) ==="
     exit 0
 fi
 
-# --- Mode: submit all models (called by bash) ---
+# --- Mode: submit all (embed_model, split) pairs (called by bash) ---
 CONFIG="${1:-${DEFAULT_CONFIG}}"
 
-EMBED_MODELS=$(uv run python -c "
+PAIRS=$(uv run python -c "
 import yaml
 with open('${CONFIG}') as f:
     cfg = yaml.safe_load(f)
+split = cfg.get('evaluation', {}).get('split', 'both')
+splits = ['api', 'line'] if split == 'both' else [split]
 for m in cfg['retrieval']['embed_models']:
-    print(m)
+    if m == 'none':
+        continue
+    for s in splits:
+        print(f'{m}\t{s}')
 ")
 
-while IFS= read -r embed_model; do
-    if [ "${embed_model}" = "none" ]; then
-        echo "Skipped: none (no retrieval baseline)"
-        continue
-    fi
-    safe_name=$(echo "${embed_model}" | tr '/' '_')
+while IFS=$'\t' read -r embed_model split; do
+    safe_name=$(echo "${embed_model}_${split}" | tr '/' '_')
     if [ "${embed_model}" = "bm25" ]; then
         JOB_ID=$(sbatch \
             --job-name="ret_${safe_name}" \
@@ -64,14 +66,14 @@ while IFS= read -r embed_model; do
             --gres="" \
             --constraint="" \
             "${SCRIPT_PATH}" \
-            "${embed_model}" "${CONFIG}" \
+            "${embed_model}" "${split}" "${CONFIG}" \
             | awk '{print $4}')
     else
         JOB_ID=$(sbatch \
             --job-name="ret_${safe_name}" \
             "${SCRIPT_PATH}" \
-            "${embed_model}" "${CONFIG}" \
+            "${embed_model}" "${split}" "${CONFIG}" \
             | awk '{print $4}')
     fi
-    echo "Submitted: ${embed_model} -> job ${JOB_ID}"
-done <<< "${EMBED_MODELS}"
+    echo "Submitted: ${embed_model} / ${split} -> job ${JOB_ID}"
+done <<< "${PAIRS}"

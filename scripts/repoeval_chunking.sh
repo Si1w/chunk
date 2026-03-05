@@ -4,7 +4,6 @@
 #SBATCH -p cpu
 #SBATCH -t 04:00:00
 #SBATCH -o %x_%j.out
-#SBATCH -e %x_%j.err
 
 # --- Resources ---
 #SBATCH -N 1
