@@ -23,20 +23,16 @@ _BASE_DIR = os.path.dirname(__file__)
 class OverlapAblationStudy:
     """Ablation study varying overlap and chunk size for sliding window chunking."""
 
-    def __init__(self, overlap_values, max_chunk_sizes, embed_model, llm,
-                 batch_size=32, chunk_size_to_context_tokens=None):
+    def __init__(self, overlap_values, max_chunk_sizes, max_crossfile_contexts,
+                 embed_model, llm, batch_size=32):
         self.overlap_values = overlap_values
         self.max_chunk_sizes = max_chunk_sizes
+        self.max_crossfile_contexts = max_crossfile_contexts
         self.embed_model = embed_model
         self.llm = llm
         self.batch_size = batch_size
         self.method = "sliding"
         self.is_bm25 = embed_model == "bm25"
-        self.chunk_size_to_context_tokens = chunk_size_to_context_tokens or {
-            1000: 2048,
-            2000: 4000,
-            3000: 9999,
-        }
 
     def _ablation_window_path(self, repo, max_chunk_size, overlap):
         out = os.path.join(
@@ -64,12 +60,12 @@ class OverlapAblationStudy:
         FilePathBuilder._ensure_dir(out)
         return out
 
-    def _ablation_completion_path(self, split, max_chunk_size, overlap, top_k):
+    def _ablation_completion_path(self, split, max_chunk_size, overlap, top_k, max_crossfile_context):
         model_name = "bm25" if self.is_bm25 else Tools.safe_model_name(self.embed_model)
         safe_llm = Tools.safe_model_name(self.llm)
         out = os.path.join(
             _BASE_DIR, "completion", "ablation_overlap", model_name, safe_llm,
-            f"{split}_{self.method}_{max_chunk_size}_overlap{overlap}_{top_k}.jsonl",
+            f"{split}_{self.method}_{max_chunk_size}_overlap{overlap}_{top_k}_ctx{max_crossfile_context}.jsonl",
         )
         FilePathBuilder._ensure_dir(out)
         return out
@@ -208,11 +204,9 @@ class OverlapAblationStudy:
             self._ablation_inference_corpus_path(split, max_chunk_size, overlap, top_k),
         )
 
-    def run_completion(self, max_chunk_size, overlap, split, top_k, max_seq_length, max_generate_tokens):
+    def run_completion(self, max_chunk_size, overlap, split, top_k,
+                       max_crossfile_context, max_seq_length, max_generate_tokens):
         """Run code completion for the ablation configuration using vLLM."""
-        max_crossfile_context = self.chunk_size_to_context_tokens.get(
-            max_chunk_size, max(self.chunk_size_to_context_tokens.values()),
-        )
         inference = CodeCompletionInference(
             llm=self.llm,
             method=self.method,
@@ -243,12 +237,12 @@ class OverlapAblationStudy:
 
         Tools.dump_jsonl(
             code_completions,
-            self._ablation_completion_path(split, max_chunk_size, overlap, top_k),
+            self._ablation_completion_path(split, max_chunk_size, overlap, top_k, max_crossfile_context),
         )
 
-    def compute_scores(self, max_chunk_size, overlap, split, top_k, passk=1):
+    def compute_scores(self, max_chunk_size, overlap, split, top_k, max_crossfile_context, passk=1):
         """Compute EM/ES scores for the ablation configuration."""
-        completion_path = self._ablation_completion_path(split, max_chunk_size, overlap, top_k)
+        completion_path = self._ablation_completion_path(split, max_chunk_size, overlap, top_k, max_crossfile_context)
         completion_lines = Tools.load_jsonl(completion_path)
 
         return {
@@ -256,6 +250,7 @@ class OverlapAblationStudy:
             "llm": self.llm,
             "max_chunk_size": max_chunk_size,
             "overlap": overlap,
+            "max_crossfile_context": max_crossfile_context,
             "split": split,
             "top_k": top_k,
             "passk": passk,
@@ -281,11 +276,18 @@ class OverlapAblationStudy:
                     self.build_index(max_chunk_size, overlap)
                 if not skip_retrieval:
                     self.retrieval(max_chunk_size, overlap, split, context_length, prompt_type, top_k)
-                if not skip_completion:
-                    self.run_completion(max_chunk_size, overlap, split, top_k, max_seq_length, max_generate_tokens)
 
-                result = self.compute_scores(max_chunk_size, overlap, split, top_k, passk)
-                all_results.append(result)
+                for max_crossfile_context in self.max_crossfile_contexts:
+                    if not skip_completion:
+                        self.run_completion(
+                            max_chunk_size, overlap, split, top_k,
+                            max_crossfile_context, max_seq_length, max_generate_tokens,
+                        )
+
+                    result = self.compute_scores(
+                        max_chunk_size, overlap, split, top_k, max_crossfile_context, passk,
+                    )
+                    all_results.append(result)
 
         return all_results
 
@@ -319,10 +321,10 @@ def main():
                 ablation = OverlapAblationStudy(
                     overlap_values=ablation_cfg["overlap_values"],
                     max_chunk_sizes=ablation_cfg["max_chunk_sizes"],
+                    max_crossfile_contexts=ablation_cfg["max_crossfile_contexts"],
                     embed_model=embed_model,
                     llm=llm,
                     batch_size=retrieval_cfg.get("batch_size", 32),
-                    chunk_size_to_context_tokens=ablation_cfg.get("chunk_size_to_context_tokens"),
                 )
 
                 results = ablation.run_ablation(
@@ -342,8 +344,9 @@ def main():
 
         result_path = OverlapAblationStudy.ablation_result_path(split)
         with open(result_path, "w", newline="", encoding="utf-8") as f:
-            fieldnames = ["retriever", "llm", "max_chunk_size", "overlap", "split",
-                          "top_k", "passk", "EM", "ES", "avg_token_cost"]
+            fieldnames = ["retriever", "llm", "max_chunk_size", "overlap",
+                          "max_crossfile_context", "split", "top_k", "passk",
+                          "EM", "ES", "avg_token_cost"]
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(all_results)
