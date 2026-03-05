@@ -163,7 +163,7 @@ def main():
     chunking = cfg["chunking"]
     query = cfg["query"]
     retrieval_cfg = cfg["retrieval"]
-    methods = list({"function", "declaration", "sliding"}) if chunking["method"] == "all" else [chunking["method"]]
+    methods = CONSTANTS.ALL_METHODS if chunking["method"] == "all" else [chunking["method"]]
     embed_models = [args.embed_model] if args.embed_model else retrieval_cfg["embed_models"]
 
     eval_split = cfg.get("evaluation", {}).get("split", "both")

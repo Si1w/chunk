@@ -11,7 +11,7 @@ import os
 import editdistance
 import yaml
 
-from .utils import FilePathBuilder, Tools
+from .utils import FilePathBuilder, Tools, CONSTANTS
 
 
 def compute_EM(target, predictions, passk):
@@ -128,7 +128,7 @@ def scan_and_compute_scores(split, method, max_chunk_sizes, top_k, passk,
         print(f"  - {retriever} + {llm}")
 
     all_results = []
-    methods = ["function", "declaration", "sliding"] if method == "all" else [method]
+    methods = CONSTANTS.ALL_METHODS if method == "all" else [method]
 
     for retriever, llm in combinations:
         for m in methods:

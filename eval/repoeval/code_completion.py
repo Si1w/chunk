@@ -11,7 +11,7 @@ import yaml
 from tqdm import tqdm
 from vllm import LLM, SamplingParams
 
-from .utils import Tools, FilePathBuilder
+from .utils import Tools, FilePathBuilder, CONSTANTS
 
 
 class CodeCompletionInference:
@@ -183,7 +183,7 @@ def main():
     query = cfg["query"]
     retrieval_cfg = cfg["retrieval"]
     inference_cfg = cfg["inference"]
-    methods = list({"function", "declaration", "sliding"}) if chunking["method"] == "all" else [chunking["method"]]
+    methods = CONSTANTS.ALL_METHODS if chunking["method"] == "all" else [chunking["method"]]
     embed_models = [args.embed_model] if args.embed_model else retrieval_cfg["embed_models"]
     llms = [args.llm] if args.llm else inference_cfg["llms"]
 

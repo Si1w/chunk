@@ -7,6 +7,7 @@ _BASE_DIR = os.path.dirname(__file__)
 
 
 class CONSTANTS:
+    ALL_METHODS = ["cast", "function", "declaration", "sliding"]
     REPOs = [
         "huggingface_diffusers",
         "nerfstudio-project_nerfstudio",
