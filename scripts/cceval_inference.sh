@@ -74,7 +74,7 @@ with open('${CONFIG}') as f:
 
 chunking = cfg['chunking']
 methods = ['cast', 'function', 'declaration', 'sliding'] if chunking['method'] == 'all' else [chunking['method']]
-base_dir = os.path.join(os.path.dirname(os.path.abspath('${CONFIG}')), 'eval', 'cceval', 'completion')
+base_dir = os.path.join('${PROJECT_DIR}', 'eval', 'cceval', 'completion')
 top_k = cfg['retrieval']['top_k']
 
 def safe_name(name):

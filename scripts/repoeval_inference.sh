@@ -79,7 +79,7 @@ split = cfg.get('evaluation', {}).get('split', 'both')
 splits = ['api', 'line'] if split == 'both' else [split]
 chunking = cfg['chunking']
 methods = ['cast', 'function', 'declaration', 'sliding'] if chunking['method'] == 'all' else [chunking['method']]
-base_dir = os.path.join(os.path.dirname(os.path.abspath('${CONFIG}')), 'eval', 'repoeval', 'completion')
+base_dir = os.path.join('${PROJECT_DIR}', 'eval', 'repoeval', 'completion')
 top_k = cfg['retrieval']['top_k']
 
 def safe_name(name):
