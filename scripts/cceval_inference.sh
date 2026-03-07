@@ -101,6 +101,10 @@ for m in cfg['retrieval']['embed_models']:
             print(f'Skipped (exists): {m} / {l}', flush=True, file=__import__('sys').stderr)
 ")
 
-while IFS=$'\t' read -r embed_model llm; do
-    submit_job "${embed_model}" "${llm}" "${CONFIG}"
-done <<< "${PAIRS}"
+if [ -n "${PAIRS}" ]; then
+    while IFS=$'\t' read -r embed_model llm; do
+        submit_job "${embed_model}" "${llm}" "${CONFIG}"
+    done <<< "${PAIRS}"
+else
+    echo "All combinations already exist, nothing to submit."
+fi
