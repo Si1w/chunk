@@ -80,6 +80,29 @@ def _clone_and_checkout(repo_url, commit, dest_dir):
         return False
 
 
+def _parse_repo_field(repo_field):
+    """Parse cceval repository field '{owner}-{repo}-{commit_hash}'.
+
+    The commit hash is always the last 7 characters after the final '-'.
+    The owner/repo split is at the first '-' boundary that yields a valid
+    GitHub owner (no '-' ambiguity is resolved by trying owner as the first segment).
+
+    Returns:
+        (owner, repo_name, commit) tuple, e.g. ('turboderp', 'exllama', 'a544085')
+    """
+    # commit hash is the last segment after final '-'
+    last_dash = repo_field.rfind("-")
+    commit = repo_field[last_dash + 1:]
+    owner_repo = repo_field[:last_dash]
+
+    # owner is the first segment before the first '-'
+    first_dash = owner_repo.find("-")
+    owner = owner_repo[:first_dash]
+    repo_name = owner_repo[first_dash + 1:]
+
+    return owner, repo_name, commit
+
+
 def resolve_and_clone(directory=None, lang="python"):
     """Clone repositories referenced in the cceval dataset."""
     if directory is None:
@@ -89,30 +112,28 @@ def resolve_and_clone(directory=None, lang="python"):
     repo_dir = os.path.join(directory, "repositories")
     os.makedirs(repo_dir, exist_ok=True)
 
-    # Scan dataset files for unique (repository, commit) pairs
     dataset_path = os.path.join(datasets_dir, lang, "line_completion.jsonl")
     if not os.path.exists(dataset_path):
         raise FileNotFoundError(f"Dataset not found: {dataset_path}. Run download first.")
 
+    # Collect unique repositories: keyed by the raw field value
     repos = {}
     with open(dataset_path, "r") as f:
         for line in f:
             item = json.loads(line)
-            repo = item["metadata"]["repository"]
-            commit = item["metadata"]["commit"]
-            if repo not in repos:
-                repos[repo] = commit
+            repo_field = item["metadata"]["repository"]
+            if repo_field not in repos:
+                repos[repo_field] = _parse_repo_field(repo_field)
 
     print(f"Found {len(repos)} repositories to clone.")
     failed_repos = set()
-    for repo, commit in repos.items():
-        repo_name = repo.replace("/", "_")
-        dest = os.path.join(repo_dir, repo_name)
-        repo_url = f"https://github.com/{repo}.git"
-        print(f"Cloning {repo} @ {commit[:8]}...")
+    for repo_field, (owner, repo_name, commit) in repos.items():
+        dest = os.path.join(repo_dir, repo_field)
+        repo_url = f"https://github.com/{owner}/{repo_name}.git"
+        print(f"Cloning {owner}/{repo_name} @ {commit}...")
         if not _clone_and_checkout(repo_url, commit, dest):
-            print(f"  Failed: {repo} (repo missing or commit invalid)")
-            failed_repos.add(repo)
+            print(f"  Failed: {owner}/{repo_name} (repo missing or commit invalid)")
+            failed_repos.add(repo_field)
 
     if failed_repos:
         print(f"Failed to clone {len(failed_repos)} repositories: {failed_repos}")
@@ -148,9 +169,8 @@ def clone_and_curate(directory=None, lang="python"):
             if repo in failed_repos:
                 skipped_repo += 1
                 continue
-            repo_name = repo.replace("/", "_")
             fpath = meta["file"]
-            full_path = os.path.join(repo_dir, repo_name, fpath)
+            full_path = os.path.join(repo_dir, repo, fpath)
             if os.path.exists(full_path):
                 curated.append(item)
             else:
