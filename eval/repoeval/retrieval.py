@@ -73,7 +73,7 @@ class Retriever:
         """Search the index for the given query, returning (indices, scores)."""
         if self.is_bm25:
             import bm25s
-            k = min(k, index.scores.shape[1])
+            k = min(k, index.num_docs)
             results, scores = index.retrieve(bm25s.tokenize(query), k=k)
             return results[0], scores[0]
         else:
