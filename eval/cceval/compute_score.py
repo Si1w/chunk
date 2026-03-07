@@ -74,7 +74,81 @@ def scan_and_compute_scores(method, max_chunk_sizes, top_k, passk,
     all_results = []
     methods = CONSTANTS.ALL_METHODS if method == "all" else [method]
 
+    def _score_file(path):
+        """Load a completion file and compute all metrics."""
+        lines = Tools.load_jsonl(path)
+        total_time = None
+        if lines and "total_inference_time" in lines[-1]:
+            total_time = lines[-1]["total_inference_time"]
+            lines = lines[:-1]
+
+        em_scores = []
+        es_scores = []
+        id_em_scores = []
+        id_prec_scores = []
+        id_rec_scores = []
+        id_f1_scores = []
+        token_costs = []
+
+        for line in lines:
+            gt = line["ground_truth"]
+            completion = line["completion"]
+            if isinstance(completion, list):
+                completion = completion[0]
+            prompt = line.get("prompt", "")
+
+            processed = postprocess_code_lines(prompt, completion, lang)
+
+            em_scores.append(compute_EM(gt, processed))
+            es_scores.append(compute_ES(gt, processed))
+
+            id_em, id_prec, id_rec, id_f1 = compute_id_metrics(gt, processed, lang)
+            id_em_scores.append(id_em)
+            id_prec_scores.append(id_prec)
+            id_rec_scores.append(id_rec)
+            id_f1_scores.append(id_f1)
+
+            if "token_cost" in line:
+                token_costs.append(line["token_cost"])
+
+        n = len(lines)
+        avg = lambda scores: round(sum(scores) / n, 4) if n else 0
+
+        return {
+            "EM": avg(em_scores),
+            "ES": avg(es_scores),
+            "ID_EM": avg(id_em_scores),
+            "ID_Precision": avg(id_prec_scores),
+            "ID_Recall": avg(id_rec_scores),
+            "ID_F1": avg(id_f1_scores),
+            "avg_token_cost": round(sum(token_costs) / len(token_costs), 4) if token_costs else 0,
+            "total_inference_time": total_time,
+        }
+
     for retriever, llm in combinations:
+        if retriever == "none":
+            path = FilePathBuilder.code_completion_result_path(
+                "baseline", 0, "none", llm, 0, 0,
+            )
+            if not os.path.exists(path):
+                print(f"Warning: File not found - {path}")
+                continue
+            try:
+                scores = _score_file(path)
+                all_results.append({
+                    "retriever": retriever,
+                    "llm": llm,
+                    "method": "baseline",
+                    "max_chunk_size": 0,
+                    "max_crossfile_context": 0,
+                    "top_k": 0,
+                    "passk": passk,
+                    **scores,
+                })
+            except Exception as e:
+                print(f"Error processing {path}: {e}")
+            continue
+
         for m in methods:
             for chunk_size in max_chunk_sizes:
                 for ctx_tokens in max_crossfile_context_list:
@@ -86,45 +160,7 @@ def scan_and_compute_scores(method, max_chunk_sizes, top_k, passk,
                         continue
 
                     try:
-                        lines = Tools.load_jsonl(path)
-                        total_time = None
-                        if lines and "total_inference_time" in lines[-1]:
-                            total_time = lines[-1]["total_inference_time"]
-                            lines = lines[:-1]
-
-                        em_scores = []
-                        es_scores = []
-                        id_em_scores = []
-                        id_prec_scores = []
-                        id_rec_scores = []
-                        id_f1_scores = []
-                        token_costs = []
-
-                        for line in lines:
-                            gt = line["ground_truth"]
-                            completion = line["completion"]
-                            if isinstance(completion, list):
-                                completion = completion[0]
-                            prompt = line.get("prompt", "")
-
-                            # Post-process to first statement
-                            processed = postprocess_code_lines(prompt, completion, lang)
-
-                            em_scores.append(compute_EM(gt, processed))
-                            es_scores.append(compute_ES(gt, processed))
-
-                            id_em, id_prec, id_rec, id_f1 = compute_id_metrics(gt, processed, lang)
-                            id_em_scores.append(id_em)
-                            id_prec_scores.append(id_prec)
-                            id_rec_scores.append(id_rec)
-                            id_f1_scores.append(id_f1)
-
-                            if "token_cost" in line:
-                                token_costs.append(line["token_cost"])
-
-                        n = len(lines)
-                        avg = lambda scores: round(sum(scores) / n, 4) if n else 0
-
+                        scores = _score_file(path)
                         all_results.append({
                             "retriever": retriever,
                             "llm": llm,
@@ -133,14 +169,7 @@ def scan_and_compute_scores(method, max_chunk_sizes, top_k, passk,
                             "max_crossfile_context": ctx_tokens,
                             "top_k": top_k,
                             "passk": passk,
-                            "EM": avg(em_scores),
-                            "ES": avg(es_scores),
-                            "ID_EM": avg(id_em_scores),
-                            "ID_Precision": avg(id_prec_scores),
-                            "ID_Recall": avg(id_rec_scores),
-                            "ID_F1": avg(id_f1_scores),
-                            "avg_token_cost": round(sum(token_costs) / len(token_costs), 4) if token_costs else 0,
-                            "total_inference_time": total_time,
+                            **scores,
                         })
                     except Exception as e:
                         print(f"Error processing {path}: {e}")

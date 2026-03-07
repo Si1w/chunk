@@ -131,6 +131,38 @@ def scan_and_compute_scores(split, method, max_chunk_sizes, top_k, passk,
     methods = CONSTANTS.ALL_METHODS if method == "all" else [method]
 
     for retriever, llm in combinations:
+        if retriever == "none":
+            path = FilePathBuilder.code_completion_result_path(
+                "baseline", 0, "none", llm, split, 0, 0,
+            )
+            if not os.path.exists(path):
+                print(f"Warning: File not found - {path}")
+                continue
+            try:
+                lines = Tools.load_jsonl(path)
+                total_time = None
+                if lines and "total_inference_time" in lines[-1]:
+                    total_time = lines[-1]["total_inference_time"]
+                    lines = lines[:-1]
+
+                all_results.append({
+                    "retriever": retriever,
+                    "llm": llm,
+                    "method": "baseline",
+                    "max_chunk_size": 0,
+                    "max_crossfile_context": 0,
+                    "top_k": 0,
+                    "split": split,
+                    "passk": passk,
+                    "EM": compute_score_by_repo_with_metadata(lines, "EM", passk),
+                    "ES": compute_score_by_repo_with_metadata(lines, "ES", passk),
+                    "avg_token_cost": compute_token_cost(lines),
+                    "total_inference_time": total_time,
+                })
+            except Exception as e:
+                print(f"Error processing {path}: {e}")
+            continue
+
         for m in methods:
             for chunk_size in max_chunk_sizes:
                 for ctx_tokens in max_crossfile_context_list:
