@@ -16,7 +16,7 @@
 
 set -euo pipefail
 
-PROJECT_DIR="${SLURM_SUBMIT_DIR}"
+PROJECT_DIR="${SLURM_SUBMIT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
 cd "${PROJECT_DIR}"
 
 CONFIG="${1:-configs/cceval.yaml}"

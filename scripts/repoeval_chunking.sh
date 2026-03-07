@@ -17,7 +17,7 @@
 
 set -euo pipefail
 
-PROJECT_DIR="${SLURM_SUBMIT_DIR}"
+PROJECT_DIR="${SLURM_SUBMIT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
 CONFIG="${PROJECT_DIR}/configs/repoeval.yaml"
 cd "${PROJECT_DIR}"
 
