@@ -64,14 +64,19 @@ def _clone_and_checkout(repo_url, commit, dest_dir):
         print(f"  Already exists: {dest_dir}")
         return True
 
+    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
     try:
         subprocess.run(
+            ["git", "ls-remote", repo_url],
+            check=True, capture_output=True, env=env, timeout=30,
+        )
+        subprocess.run(
             ["git", "clone", "--no-checkout", repo_url, dest_dir],
-            check=True, capture_output=True,
+            check=True, capture_output=True, env=env,
         )
         subprocess.run(
             ["git", "checkout", commit],
-            cwd=dest_dir, check=True, capture_output=True,
+            cwd=dest_dir, check=True, capture_output=True, env=env,
         )
         return True
     except subprocess.CalledProcessError:
