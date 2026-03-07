@@ -10,17 +10,14 @@ import os
 import shutil
 import subprocess
 import tarfile
-import tempfile
-
-import requests
 
 _BASE_DIR = os.path.dirname(__file__)
 
-CCEVAL_URL = "https://raw.githubusercontent.com/nicknameisavailable/cceval-data/main/cceval.tar.xz"
+CCEVAL_REPO = "https://github.com/amazon-science/cceval.git"
 
 
 def download_data(directory=None, lang="python"):
-    """Download cceval dataset, keep only the specified language."""
+    """Clone official cceval repo and extract dataset for the specified language."""
     if directory is None:
         directory = _BASE_DIR
     datasets_dir = os.path.join(directory, "datasets")
@@ -29,26 +26,32 @@ def download_data(directory=None, lang="python"):
         print(f"Dataset already exists at {datasets_dir}/{lang}, skipping download.")
         return
 
-    print("Downloading cceval dataset...")
+    print("Cloning official cceval repository...")
     os.makedirs(datasets_dir, exist_ok=True)
 
-    with tempfile.NamedTemporaryFile(suffix=".tar.xz", delete=False) as tmp:
-        r = requests.get(CCEVAL_URL, stream=True)
-        r.raise_for_status()
-        for chunk in r.iter_content(chunk_size=8192):
-            tmp.write(chunk)
-        tmp_path = tmp.name
+    clone_dir = os.path.join(datasets_dir, "_cceval_repo")
+    if not os.path.exists(clone_dir):
+        subprocess.run(
+            ["git", "clone", "--depth", "1", CCEVAL_REPO, clone_dir],
+            check=True,
+        )
 
-    try:
-        with tarfile.open(tmp_path, "r:xz") as tar:
-            members = [
-                m for m in tar.getmembers()
-                if lang in m.name and not m.name.startswith(".")
-            ]
-            tar.extractall(path=datasets_dir, members=members)
-    finally:
-        os.unlink(tmp_path)
+    tar_path = os.path.join(clone_dir, "data", "crosscodeeval_data.tar.xz")
+    if not os.path.exists(tar_path):
+        raise FileNotFoundError(
+            f"Dataset archive not found at {tar_path}. "
+            "The file may require Git LFS. Try: cd {clone_dir} && git lfs pull"
+        )
 
+    print("Extracting dataset...")
+    with tarfile.open(tar_path, "r:xz") as tar:
+        members = [
+            m for m in tar.getmembers()
+            if lang in m.name and not m.name.startswith(".")
+        ]
+        tar.extractall(path=datasets_dir, members=members)
+
+    shutil.rmtree(clone_dir)
     print(f"Downloaded cceval dataset to {datasets_dir}")
 
 
