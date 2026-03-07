@@ -25,6 +25,7 @@ class Retriever:
         if not self.is_bm25:
             from sentence_transformers import SentenceTransformer
             self.model = SentenceTransformer(embed_model, trust_remote_code=True)
+            self.model.max_seq_length = 8192
 
     def _embed_texts(self, texts):
         embeddings = self.model.encode(texts, batch_size=self.batch_size, show_progress_bar=True, convert_to_numpy=True)
@@ -79,6 +80,13 @@ class Retriever:
             return indices[0], scores[0]
 
     def retrieval(self, method, max_chunk_size, top_k, num_queries=None, rebuild=False):
+        out_path = FilePathBuilder.inference_corpus_path(
+            method, max_chunk_size, self.embed_model, top_k,
+        )
+        if os.path.exists(out_path) and not rebuild:
+            print(f"Skipping retrieval: {out_path} already exists")
+            return
+
         query_lines = Tools.load_jsonl(FilePathBuilder.query_windows_path(window_size=10))
         if num_queries:
             query_lines = query_lines[:num_queries]
@@ -147,9 +155,6 @@ class Retriever:
                 "ground_truth": query_line["metadata"]["ground_truth"],
             })
 
-        out_path = FilePathBuilder.inference_corpus_path(
-            method, max_chunk_size, self.embed_model, top_k,
-        )
         Tools.dump_jsonl(inference_corpus, out_path)
 
 
