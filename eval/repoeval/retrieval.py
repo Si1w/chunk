@@ -69,16 +69,15 @@ class Retriever:
             import faiss
             return faiss.read_index(index_path)
 
-    def _search(self, index, query, k):
+    def _search(self, index, query, k, corpus_size):
         """Search the index for the given query, returning (indices, scores)."""
+        k = min(k, corpus_size)
         if self.is_bm25:
             import bm25s
-            k = min(k, index.num_docs)
             results, scores = index.retrieve(bm25s.tokenize(query), k=k)
             return results[0], scores[0]
         else:
             import faiss
-            k = min(k, index.ntotal)
             query_embedding = self._embed_texts([query])
             faiss.normalize_L2(query_embedding)
             scores, indices = index.search(query_embedding, k)
@@ -120,7 +119,7 @@ class Retriever:
 
             query = query_line["query"]
             fpath_tuple = "/".join(query_line["metadata"]["fpath_tuple"])
-            indices, scores = self._search(index, query, top_k + 50)
+            indices, scores = self._search(index, query, top_k + 50, len(windows))
 
             retrieved = []
             for idx, score in zip(indices, scores):
