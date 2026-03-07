@@ -68,10 +68,12 @@ class Retriever:
     def _search(self, index, query, k):
         if self.is_bm25:
             import bm25s
+            k = min(k, index.scores.shape[1])
             results, scores = index.retrieve(bm25s.tokenize(query), k=k)
             return results[0], scores[0]
         else:
             import faiss
+            k = min(k, index.ntotal)
             query_embedding = self._embed_texts([query])
             faiss.normalize_L2(query_embedding)
             scores, indices = index.search(query_embedding, k)
