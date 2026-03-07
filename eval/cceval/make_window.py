@@ -123,7 +123,7 @@ class QueryWindowMaker:
                     "fpath_tuple": "/".join(fpath_tuple),
                     "task_id": meta["task_id"],
                     "repo": cur_repo,
-                    "ground_truth": meta["ground_truth"],
+                    "ground_truth": dataset["groundtruth"],
                 },
                 "prompt": dataset["prompt"],
             })

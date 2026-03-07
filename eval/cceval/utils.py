@@ -108,7 +108,7 @@ class Tools:
             raise ValueError(f"Unsupported language: {language}")
 
         pattern = os.path.join(base_dir, repo, "**", ext)
-        files = glob.glob(pattern, recursive=True)
+        files = [f for f in glob.glob(pattern, recursive=True) if os.path.isfile(f)]
 
         base_parts = os.path.normpath(base_dir).split(os.sep)
         skipped = []
