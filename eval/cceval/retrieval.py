@@ -9,6 +9,7 @@ import argparse
 import os
 
 import numpy as np
+import torch
 import yaml
 from tqdm import tqdm
 
@@ -29,6 +30,7 @@ class Retriever:
 
     def _embed_texts(self, texts):
         embeddings = self.model.encode(texts, batch_size=self.batch_size, show_progress_bar=True, convert_to_numpy=True)
+        torch.cuda.empty_cache()
         return np.array(embeddings, dtype="float32")
 
     def _build_id2idx(self, windows):
