@@ -86,7 +86,11 @@ class CodeCompletionInference:
             inference_prompt = self._build_prompt(
                 corpus["prompt"], corpus["retrieved_windows"], max_crossfile_context,
             )
-            prompts.append(inference_prompt)
+            token_ids = self.tokenizer.encode(inference_prompt)
+            max_tokens = self.max_seq_length - self.max_generate_tokens
+            if len(token_ids) > max_tokens:
+                token_ids = token_ids[-max_tokens:]
+            prompts.append({"prompt_token_ids": token_ids})
 
         start_time = time.time()
         outputs = self.model.generate(prompts, self.sampling_params)
@@ -121,7 +125,7 @@ class CodeCompletionInference:
             token_ids = self.tokenizer.encode(sample["prompt"])
             if len(token_ids) > prompt_budget:
                 token_ids = token_ids[-prompt_budget:]
-            prompts.append(self.tokenizer.decode(token_ids))
+            prompts.append({"prompt_token_ids": token_ids})
 
         start_time = time.time()
         outputs = self.model.generate(prompts, self.sampling_params)

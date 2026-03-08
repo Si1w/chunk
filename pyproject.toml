@@ -26,6 +26,13 @@ eval = [
     "tqdm",
     "vllm",
 ]
+dev = [
+    "ipykernel",
+    "matplotlib",
+    "pandas",
+    "scipy",
+    "seaborn"
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["chunk", "eval"]

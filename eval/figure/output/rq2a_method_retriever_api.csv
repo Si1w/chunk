@@ -1,0 +1,5 @@
+method,bm25,embeddinggemma-300m,Qwen3-Embedding-0.6B,Qwen3-Embedding-4B
+function,0.4267,0.4234,0.425,0.4174
+declaration,0.4644,0.4601,0.4553,0.4565
+sliding,0.467,0.4622,0.4591,0.462
+cast,0.466,0.4609,0.4564,0.4557
