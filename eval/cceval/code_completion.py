@@ -115,7 +115,13 @@ class CodeCompletionInference:
         """Run baseline inference without retrieval."""
         benchmark = Tools.load_jsonl(FilePathBuilder.benchmark_path())
 
-        prompts = [sample["prompt"] + "\n" for sample in benchmark]
+        prompt_budget = self.max_seq_length - self.max_generate_tokens
+        prompts = []
+        for sample in benchmark:
+            token_ids = self.tokenizer.encode(sample["prompt"])
+            if len(token_ids) > prompt_budget:
+                token_ids = token_ids[-prompt_budget:]
+            prompts.append(self.tokenizer.decode(token_ids))
 
         start_time = time.time()
         outputs = self.model.generate(prompts, self.sampling_params)
