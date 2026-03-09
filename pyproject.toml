@@ -24,7 +24,8 @@ eval = [
     "sentence-transformers",
     "thefuzz",
     "tqdm",
-    "vllm",
+    "transformers>=4.57",
+    "vllm>=0.17",
 ]
 dev = [
     "ipykernel",

@@ -26,6 +26,8 @@ retrieval:
   embed_models:
     - bm25
     - Qwen/Qwen3-Embedding-0.6B
+    - google/embeddinggemma-300m
+    - Qwen/Qwen3-Embedding-4B
   batch_size: 32
   top_k: 10
 
@@ -33,6 +35,9 @@ retrieval:
 inference:
   llms:
     - Qwen/Qwen2.5-Coder-7B
+    - deepseek-ai/deepseek-coder-6.7b-base
+    - ByteDance-Seed/Seed-Coder-8B-Base
+    - Qwen/Qwen3.5-9B-Base
   max_seq_length: 8192
   max_generate_tokens: 50
   temperature: 0

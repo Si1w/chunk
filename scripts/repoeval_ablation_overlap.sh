@@ -1,15 +1,15 @@
 #!/bin/bash
 # Ablation study: sliding window overlap on RepoEval.
-# Runs chunking + retrieval on CPU, then submits a GPU job for inference + scoring.
+# Submits one GPU job per LLM so each job loads the model only once.
 #
 # Usage:
-#   sbatch repoeval_ablation_overlap.sh [config]                # full pipeline
-#   sbatch repoeval_ablation_overlap.sh [config] --skip_window  # skip chunking step
+#   bash repoeval_ablation_overlap.sh [config]                      # submit all LLMs
+#   bash repoeval_ablation_overlap.sh <llm> [config]                # submit single LLM
+#   sbatch ... repoeval_ablation_overlap.sh --run <llm> [config]    # execute (called by sbatch)
 #
 # --- SLURM directives (GPU for vLLM inference) ---
-#SBATCH -J repoeval_ablation_overlap
 #SBATCH -p gpu
-#SBATCH -t 24:00:00
+#SBATCH -t 48:00:00
 #SBATCH -o %x_%j.out
 #SBATCH -N 1
 #SBATCH -n 1
@@ -22,25 +22,60 @@ set -euo pipefail
 
 PROJECT_DIR="${SLURM_SUBMIT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
 cd "${PROJECT_DIR}"
-CONFIG="${1:-${PROJECT_DIR}/configs/ablation_overlap.yaml}"
+SCRIPT_PATH="$(realpath "$0")"
+DEFAULT_CONFIG="${PROJECT_DIR}/configs/ablation_overlap.yaml"
 
-# Collect optional --skip_* flags
-SKIP_FLAGS=""
-for arg in "$@"; do
-    case "$arg" in
-        --skip_window|--skip_retrieval|--skip_completion)
-            SKIP_FLAGS="${SKIP_FLAGS} ${arg}" ;;
-    esac
-done
+submit_job() {
+    local llm="$1" config="$2"
+    local safe_name
+    safe_name=$(echo "${llm}" | tr '/' '_')
 
-echo "=== Overlap Ablation Study ==="
-echo "Config: ${CONFIG}"
-echo "Skip flags: ${SKIP_FLAGS:-none}"
-echo "GPU: $(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>/dev/null || echo 'N/A')"
-echo "Start: $(date)"
+    local JOB_ID
+    JOB_ID=$(sbatch \
+        --job-name="ablation_overlap_${safe_name}" \
+        --output="ablation_overlap_${safe_name}_%j.out" \
+        "${SCRIPT_PATH}" --run "${llm}" "${config}" \
+        | awk '{print $4}')
+    echo "Submitted: ${llm} -> job ${JOB_ID}"
+}
 
-uv run python -m eval.repoeval.ablation_overlap \
-    --config "${CONFIG}" \
-    ${SKIP_FLAGS}
+# --- Mode: execute (called by sbatch via --run flag) ---
+if [ "${1:-}" = "--run" ]; then
+    LLM="${2:?Missing llm}"
+    CONFIG="${3:-${DEFAULT_CONFIG}}"
 
-echo "=== Ablation Done: $(date) ==="
+    echo "=== Overlap Ablation: ${LLM} ==="
+    echo "Config: ${CONFIG}"
+    echo "GPU: $(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>/dev/null || echo 'N/A')"
+    echo "Start: $(date)"
+
+    uv run python -m eval.repoeval.ablation_overlap \
+        --config "${CONFIG}" \
+        --llm "${LLM}"
+
+    echo "=== Done: $(date) ==="
+    exit 0
+fi
+
+# --- Mode: submit single LLM ---
+if [ $# -ge 1 ] && [ "${1:-}" != "--run" ] && [[ "${1:-}" == */* ]]; then
+    LLM="$1"
+    CONFIG="${2:-${DEFAULT_CONFIG}}"
+    submit_job "${LLM}" "${CONFIG}"
+    exit 0
+fi
+
+# --- Mode: submit all LLMs ---
+CONFIG="${1:-${DEFAULT_CONFIG}}"
+
+LLMS=$(uv run python -c "
+import yaml
+with open('${CONFIG}') as f:
+    cfg = yaml.safe_load(f)
+for llm in cfg['inference']['llms']:
+    print(llm)
+")
+
+while IFS= read -r llm; do
+    submit_job "${llm}" "${CONFIG}"
+done <<< "${LLMS}"

@@ -298,6 +298,8 @@ def main():
     """Entry point: load YAML config and run overlap ablation study."""
     parser = argparse.ArgumentParser(description="Overlap ablation study for RepoEval.")
     parser.add_argument("--config", type=str, required=True, help="Path to YAML config file.")
+    parser.add_argument("--llm", type=str, default=None, help="Run only for a specific LLM (default: all).")
+    parser.add_argument("--embed_model", type=str, default=None, help="Run only for a specific embed model (default: all).")
     parser.add_argument("--skip_window", action="store_true", help="Skip window building step.")
     parser.add_argument("--skip_retrieval", action="store_true", help="Skip retrieval step.")
     parser.add_argument("--skip_completion", action="store_true", help="Skip code completion step.")
@@ -312,13 +314,15 @@ def main():
     inference_cfg = cfg["inference"]
     eval_cfg = cfg["evaluation"]
 
+    embed_models = [args.embed_model] if args.embed_model else retrieval_cfg["embed_models"]
+    llms = [args.llm] if args.llm else inference_cfg["llms"]
     splits = ["api", "line"] if eval_cfg.get("split") == "both" else [eval_cfg.get("split", "api")]
 
     for split in splits:
         all_results = []
 
-        for embed_model in retrieval_cfg["embed_models"]:
-            for llm in inference_cfg["llms"]:
+        for embed_model in embed_models:
+            for llm in llms:
                 ablation = OverlapAblationStudy(
                     overlap_values=ablation_cfg["overlap_values"],
                     max_chunk_sizes=ablation_cfg["max_chunk_sizes"],
