@@ -136,7 +136,7 @@ class CodeCompletionInference:
             code_completions.append({
                 "prompt": sample["prompt"],
                 "completion": output.outputs[0].text,
-                "ground_truth": sample["metadata"]["ground_truth"],
+                "ground_truth": sample["groundtruth"],
                 "token_cost": len(output.prompt_token_ids) + len(output.outputs[0].token_ids),
             })
 
