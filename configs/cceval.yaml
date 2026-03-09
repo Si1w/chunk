@@ -36,6 +36,7 @@ inference:
     - Qwen/Qwen2.5-Coder-7B
     - deepseek-ai/deepseek-coder-6.7b-base
     - ByteDance-Seed/Seed-Coder-8B-Base
+    - Qwen/Qwen3.5-9B-Base
   max_seq_length: 8192
   max_crossfile_contexts:
     - 2048
