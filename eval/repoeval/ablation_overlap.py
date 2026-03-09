@@ -249,6 +249,12 @@ class OverlapAblationStudy:
                      max_seq_length=8192, max_generate_tokens=50,
                      skip_window=False, skip_retrieval=False, skip_completion=False):
         """Run the full ablation study pipeline."""
+        # Build query windows once (shared across all overlap/chunk_size combos)
+        query_path = FilePathBuilder.query_windows_path(split, context_length, prompt_type, window_size=20)
+        if not os.path.exists(query_path):
+            from .make_window import make_query_window
+            make_query_window(context_length, prompt_type, CONSTANTS.REPOs, window_size=20)
+
         if not self.is_bm25 and not hasattr(self, "_embed_model_instance"):
             from sentence_transformers import SentenceTransformer
             self._embed_model_instance = SentenceTransformer(self.embed_model, trust_remote_code=True)
