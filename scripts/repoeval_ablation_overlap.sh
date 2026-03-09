@@ -28,7 +28,7 @@ CONFIG="${1:-${PROJECT_DIR}/configs/ablation_overlap.yaml}"
 SKIP_FLAGS=""
 for arg in "$@"; do
     case "$arg" in
-        --skip_window|--skip_index|--skip_retrieval|--skip_completion)
+        --skip_window|--skip_retrieval|--skip_completion)
             SKIP_FLAGS="${SKIP_FLAGS} ${arg}" ;;
     esac
 done

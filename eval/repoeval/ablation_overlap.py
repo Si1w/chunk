@@ -112,33 +112,34 @@ class OverlapAblationStudy:
             ]
             Tools.dump_jsonl(json_lines, self._ablation_window_path(repo, max_chunk_size, overlap))
 
-    def build_index(self, max_chunk_size, overlap):
-        """Build retrieval index for a given overlap and chunk size."""
-        if self.is_bm25:
-            for repo in tqdm(CONSTANTS.REPOs, desc=f"Building BM25 index overlap={overlap}"):
-                window_path = self._ablation_window_path(repo, max_chunk_size, overlap)
-                windows = Tools.load_jsonl(window_path)
-                code_contents = [w["context"] for w in windows]
+    def _ensure_index(self, repo, max_chunk_size, overlap):
+        """Build index for a repo if it doesn't exist, then load it."""
+        index_path = self._ablation_index_path(repo, max_chunk_size, overlap)
+        if not os.path.exists(index_path):
+            window_path = self._ablation_window_path(repo, max_chunk_size, overlap)
+            windows = Tools.load_jsonl(window_path)
+            code_contents = [w["context"] for w in windows]
+
+            if self.is_bm25:
                 retriever = bm25s.BM25(corpus=code_contents)
                 retriever.index(bm25s.tokenize(code_contents))
-                retriever.save(self._ablation_index_path(repo, max_chunk_size, overlap))
-        else:
-            import faiss
-            from sentence_transformers import SentenceTransformer
-
-            model = SentenceTransformer(self.embed_model, trust_remote_code=True)
-            for repo in tqdm(CONSTANTS.REPOs, desc=f"Building vectors overlap={overlap}"):
-                window_path = self._ablation_window_path(repo, max_chunk_size, overlap)
-                windows = Tools.load_jsonl(window_path)
-                code_contents = [w["context"] for w in windows]
-                embeddings = model.encode(
+                retriever.save(index_path)
+            else:
+                import faiss
+                embeddings = self._embed_model_instance.encode(
                     code_contents, batch_size=self.batch_size,
                     convert_to_numpy=True, show_progress_bar=False,
                 )
                 faiss.normalize_L2(embeddings)
                 index = faiss.IndexFlatIP(embeddings.shape[1])
                 index.add(embeddings)
-                faiss.write_index(index, self._ablation_index_path(repo, max_chunk_size, overlap))
+                faiss.write_index(index, index_path)
+
+        if self.is_bm25:
+            return bm25s.BM25.load(index_path, load_corpus=False)
+        else:
+            import faiss
+            return faiss.read_index(index_path)
 
     def retrieval(self, max_chunk_size, overlap, split, context_length, prompt_type, top_k):
         """Retrieve top-k windows for the ablation configuration."""
@@ -150,20 +151,11 @@ class OverlapAblationStudy:
         index = None
         windows = None
 
-        if not self.is_bm25 and not hasattr(self, "_embed_model_instance"):
-            from sentence_transformers import SentenceTransformer
-            self._embed_model_instance = SentenceTransformer(self.embed_model, trust_remote_code=True)
-
         for query_line in tqdm(query_lines, desc=f"Retrieving overlap={overlap}"):
             repo = query_line["metadata"]["repo"]
             if repo != cur_repo:
-                index_path = self._ablation_index_path(repo, max_chunk_size, overlap)
+                index = self._ensure_index(repo, max_chunk_size, overlap)
                 windows_path = self._ablation_window_path(repo, max_chunk_size, overlap)
-                if self.is_bm25:
-                    index = bm25s.BM25.load(index_path, load_corpus=False)
-                else:
-                    import faiss
-                    index = faiss.read_index(index_path)
                 windows = Tools.load_jsonl(windows_path)
                 cur_repo = repo
 
@@ -204,24 +196,18 @@ class OverlapAblationStudy:
             self._ablation_inference_corpus_path(split, max_chunk_size, overlap, top_k),
         )
 
-    def run_completion(self, max_chunk_size, overlap, split, top_k,
-                       max_crossfile_context, max_seq_length, max_generate_tokens):
-        """Run code completion for the ablation configuration using vLLM."""
-        inference = CodeCompletionInference(
-            llm=self.llm,
-            method=self.method,
-            max_chunk_size=max_chunk_size,
-            embed_model=self.embed_model,
-            max_generate_tokens=max_generate_tokens,
-            max_seq_length=max_seq_length,
-            max_crossfile_context=max_crossfile_context,
-        )
+    def run_completion(self, inference, max_chunk_size, overlap, split, top_k,
+                       max_crossfile_context):
+        """Run code completion for the ablation configuration using vLLM.
 
+        Args:
+            inference: Reusable CodeCompletionInference instance.
+        """
         corpus_path = self._ablation_inference_corpus_path(split, max_chunk_size, overlap, top_k)
         inference_corpus = Tools.load_jsonl(corpus_path)
 
         prompts = [
-            inference._build_prompt(c["prompt"], c["retrieved_windows"])
+            inference._build_prompt(c["prompt"], c["retrieved_windows"], max_crossfile_context)
             for c in inference_corpus
         ]
         outputs = inference.model.generate(prompts, inference.sampling_params)
@@ -261,8 +247,20 @@ class OverlapAblationStudy:
 
     def run_ablation(self, split, context_length, prompt_type, top_k, passk=1,
                      max_seq_length=8192, max_generate_tokens=50,
-                     skip_window=False, skip_index=False, skip_retrieval=False, skip_completion=False):
+                     skip_window=False, skip_retrieval=False, skip_completion=False):
         """Run the full ablation study pipeline."""
+        if not self.is_bm25 and not hasattr(self, "_embed_model_instance"):
+            from sentence_transformers import SentenceTransformer
+            self._embed_model_instance = SentenceTransformer(self.embed_model, trust_remote_code=True)
+
+        inference = None
+        if not skip_completion:
+            inference = CodeCompletionInference(
+                llm=self.llm,
+                max_generate_tokens=max_generate_tokens,
+                max_seq_length=max_seq_length,
+            )
+
         all_results = []
 
         for max_chunk_size in self.max_chunk_sizes:
@@ -272,16 +270,14 @@ class OverlapAblationStudy:
 
                 if not skip_window:
                     self.build_windows(max_chunk_size, overlap)
-                if not skip_index:
-                    self.build_index(max_chunk_size, overlap)
                 if not skip_retrieval:
                     self.retrieval(max_chunk_size, overlap, split, context_length, prompt_type, top_k)
 
                 for max_crossfile_context in self.max_crossfile_contexts:
                     if not skip_completion:
                         self.run_completion(
-                            max_chunk_size, overlap, split, top_k,
-                            max_crossfile_context, max_seq_length, max_generate_tokens,
+                            inference, max_chunk_size, overlap, split, top_k,
+                            max_crossfile_context,
                         )
 
                     result = self.compute_scores(
@@ -297,7 +293,6 @@ def main():
     parser = argparse.ArgumentParser(description="Overlap ablation study for RepoEval.")
     parser.add_argument("--config", type=str, required=True, help="Path to YAML config file.")
     parser.add_argument("--skip_window", action="store_true", help="Skip window building step.")
-    parser.add_argument("--skip_index", action="store_true", help="Skip index building step.")
     parser.add_argument("--skip_retrieval", action="store_true", help="Skip retrieval step.")
     parser.add_argument("--skip_completion", action="store_true", help="Skip code completion step.")
     args = parser.parse_args()
@@ -336,7 +331,6 @@ def main():
                     max_seq_length=inference_cfg["max_seq_length"],
                     max_generate_tokens=inference_cfg["max_generate_tokens"],
                     skip_window=args.skip_window,
-                    skip_index=args.skip_index,
                     skip_retrieval=args.skip_retrieval,
                     skip_completion=args.skip_completion,
                 )
