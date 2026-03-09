@@ -81,7 +81,7 @@ class OverlapAblationStudy:
 
     def build_windows(self, max_chunk_size, overlap, language="python"):
         """Build sliding windows for a given overlap and chunk size."""
-        from src import SlidingChunkBuilder
+        from chunk import SlidingChunkBuilder
 
         configs = {
             "max_chunk_size": max_chunk_size,
