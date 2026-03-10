@@ -32,7 +32,8 @@ dev = [
     "matplotlib",
     "pandas",
     "scipy",
-    "seaborn"
+    "seaborn",
+    "statsmodels"
 ]
 
 [tool.hatch.build.targets.wheel]

@@ -1,0 +1,13 @@
+split,strategy_A,strategy_B,wilcoxon_stat,p_raw,p_corrected,significant,cliffs_delta,effect_size
+api,Function,Declaration,0.0,2.2172190997235646e-25,1.3303314598341388e-24,Yes,-1.0,Large
+api,Function,Sliding Window,0.0,2.22095952230447e-25,1.3303314598341388e-24,Yes,-1.0,Large
+api,Function,cAST,0.0,2.218123483645919e-25,1.3303314598341388e-24,Yes,-1.0,Large
+api,Declaration,Sliding Window,2445.5,1.3693053723712577e-07,4.1079161171137735e-07,Yes,-0.3403,Medium
+api,Declaration,cAST,3413.0,0.006829451804355257,0.006829451804355257,Yes,-0.2222,Small
+api,Sliding Window,cAST,2682.0,1.1176090644638572e-05,2.2352181289277144e-05,Yes,0.3542,Medium
+line,Function,Declaration,0.0,2.2190885516202825e-25,1.3314531309721695e-24,Yes,-1.0,Large
+line,Function,Sliding Window,0.0,2.223255043916054e-25,1.3314531309721695e-24,Yes,-1.0,Large
+line,Function,cAST,0.0,2.222469476735573e-25,1.3314531309721695e-24,Yes,-1.0,Large
+line,Declaration,Sliding Window,46.0,1.253139634478246e-24,2.506279268956492e-24,Yes,-0.9167,Large
+line,Declaration,cAST,1.0,2.2581963049833774e-25,1.3314531309721695e-24,Yes,-0.9861,Large
+line,Sliding Window,cAST,3547.5,0.0012575157556440988,0.0012575157556440988,Yes,0.1458,Negligible
