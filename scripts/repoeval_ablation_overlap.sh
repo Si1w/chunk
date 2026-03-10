@@ -25,16 +25,18 @@ cd "${PROJECT_DIR}"
 SCRIPT_PATH="$(realpath "$0")"
 DEFAULT_CONFIG="${PROJECT_DIR}/configs/ablation_overlap.yaml"
 
-# --- Parse --skip_* flags from any position ---
+# --- Parse flags from any position ---
 SKIP_WINDOW=false
 SKIP_RETRIEVAL=false
 SKIP_COMPLETION=false
+SCORE=false
 POSITIONAL=()
 for arg in "$@"; do
     case "${arg}" in
         --skip_window)      SKIP_WINDOW=true ;;
         --skip_retrieval)   SKIP_RETRIEVAL=true ;;
         --skip_completion)  SKIP_COMPLETION=true ;;
+        --score)            SCORE=true ;;
         *)                  POSITIONAL+=("${arg}") ;;
     esac
 done
@@ -50,7 +52,7 @@ submit_job() {
         --job-name="ablation_overlap_${safe_name}" \
         --output="ablation_overlap_${safe_name}_%j.out" \
         "${SCRIPT_PATH}" --run "${llm}" "${config}" \
-            "${SKIP_WINDOW}" "${SKIP_RETRIEVAL}" "${SKIP_COMPLETION}" \
+            "${SKIP_WINDOW}" "${SKIP_RETRIEVAL}" "${SKIP_COMPLETION}" "${SCORE}" \
         | awk '{print $4}')
     echo "Submitted: ${llm} -> job ${JOB_ID}"
 }
@@ -62,23 +64,26 @@ if [ "${1:-}" = "--run" ]; then
     SKIP_WINDOW="${4:-false}"
     SKIP_RETRIEVAL="${5:-false}"
     SKIP_COMPLETION="${6:-false}"
+    SCORE="${7:-false}"
 
     echo "=== Overlap Ablation: ${LLM} ==="
     echo "Config: ${CONFIG}"
     echo "Skip: window=${SKIP_WINDOW} retrieval=${SKIP_RETRIEVAL} completion=${SKIP_COMPLETION}"
+    echo "Score: ${SCORE}"
     echo "GPU: $(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>/dev/null || echo 'N/A')"
     echo "Start: $(date)"
 
-    SKIP_ARGS=""
-    [ "${SKIP_WINDOW}" = "true" ] && SKIP_ARGS="${SKIP_ARGS} --skip_window"
-    [ "${SKIP_RETRIEVAL}" = "true" ] && SKIP_ARGS="${SKIP_ARGS} --skip_retrieval"
-    [ "${SKIP_COMPLETION}" = "true" ] && SKIP_ARGS="${SKIP_ARGS} --skip_completion"
+    EXTRA_ARGS=""
+    [ "${SKIP_WINDOW}" = "true" ] && EXTRA_ARGS="${EXTRA_ARGS} --skip_window"
+    [ "${SKIP_RETRIEVAL}" = "true" ] && EXTRA_ARGS="${EXTRA_ARGS} --skip_retrieval"
+    [ "${SKIP_COMPLETION}" = "true" ] && EXTRA_ARGS="${EXTRA_ARGS} --skip_completion"
+    [ "${SCORE}" = "true" ] && EXTRA_ARGS="${EXTRA_ARGS} --score"
 
     # shellcheck disable=SC2086
     uv run python -m eval.repoeval.ablation_overlap \
         --config "${CONFIG}" \
         --llm "${LLM}" \
-        ${SKIP_ARGS}
+        ${EXTRA_ARGS}
 
     echo "=== Done: $(date) ==="
     exit 0

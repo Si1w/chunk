@@ -271,10 +271,10 @@ class OverlapAblationStudy:
             "avg_token_cost": compute_token_cost(completion_lines),
         }
 
-    def run_ablation(self, split, context_length, prompt_type, top_k, passk=1,
+    def run_ablation(self, split, context_length, prompt_type, top_k,
                      max_seq_length=8192, max_generate_tokens=50,
                      skip_window=False, skip_retrieval=False, skip_completion=False):
-        """Run the full ablation study pipeline."""
+        """Run the ablation study pipeline (window, retrieval, completion)."""
         # Build query windows once (shared across all overlap/chunk_size combos)
         query_path = FilePathBuilder.query_windows_path(split, context_length, prompt_type, window_size=20)
         if not os.path.exists(query_path):
@@ -284,8 +284,6 @@ class OverlapAblationStudy:
         if not self.is_bm25 and not hasattr(self, "_embed_model_instance"):
             from sentence_transformers import SentenceTransformer
             self._embed_model_instance = SentenceTransformer(self.embed_model, trust_remote_code=True)
-
-        all_results = []
 
         for max_chunk_size in self.max_chunk_sizes:
             for overlap in self.overlap_values:
@@ -306,6 +304,12 @@ class OverlapAblationStudy:
                             max_generate_tokens=max_generate_tokens,
                         )
 
+    def score_ablation(self, split, top_k, passk=1):
+        """Compute scores for all ablation configurations."""
+        all_results = []
+        for max_chunk_size in self.max_chunk_sizes:
+            for overlap in self.overlap_values:
+                for max_crossfile_context in self.max_crossfile_contexts:
                     completion_path = self._ablation_completion_path(
                         split, max_chunk_size, overlap, top_k, max_crossfile_context,
                     )
@@ -317,7 +321,6 @@ class OverlapAblationStudy:
                         max_chunk_size, overlap, split, top_k, max_crossfile_context, passk,
                     )
                     all_results.append(result)
-
         return all_results
 
 
@@ -330,6 +333,7 @@ def main():
     parser.add_argument("--skip_window", action="store_true", help="Skip window building step.")
     parser.add_argument("--skip_retrieval", action="store_true", help="Skip retrieval step.")
     parser.add_argument("--skip_completion", action="store_true", help="Skip code completion step.")
+    parser.add_argument("--score", action="store_true", help="Compute scores and export CSV (off by default).")
     args = parser.parse_args()
 
     with open(args.config, "r") as f:
@@ -359,30 +363,37 @@ def main():
                     batch_size=retrieval_cfg.get("batch_size", 32),
                 )
 
-                results = ablation.run_ablation(
+                ablation.run_ablation(
                     split=split,
                     context_length=query["context_length"],
                     prompt_type=query["prompt_type"],
                     top_k=retrieval_cfg["top_k"],
-                    passk=eval_cfg.get("passk", 1),
                     max_seq_length=inference_cfg["max_seq_length"],
                     max_generate_tokens=inference_cfg["max_generate_tokens"],
                     skip_window=args.skip_window,
                     skip_retrieval=args.skip_retrieval,
                     skip_completion=args.skip_completion,
                 )
-                all_results.extend(results)
 
-        result_path = OverlapAblationStudy.ablation_result_path(split)
-        with open(result_path, "w", newline="", encoding="utf-8") as f:
-            fieldnames = ["retriever", "llm", "max_chunk_size", "overlap",
-                          "max_crossfile_context", "split", "top_k", "passk",
-                          "EM", "ES", "avg_token_cost"]
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
-            writer.writeheader()
-            writer.writerows(all_results)
+                if args.score:
+                    results = ablation.score_ablation(
+                        split=split,
+                        top_k=retrieval_cfg["top_k"],
+                        passk=eval_cfg.get("passk", 1),
+                    )
+                    all_results.extend(results)
 
-        print(f"\nResults saved to: {result_path} ({len(all_results)} combinations)")
+        if args.score:
+            result_path = OverlapAblationStudy.ablation_result_path(split)
+            with open(result_path, "w", newline="", encoding="utf-8") as f:
+                fieldnames = ["retriever", "llm", "max_chunk_size", "overlap",
+                              "max_crossfile_context", "split", "top_k", "passk",
+                              "EM", "ES", "avg_token_cost"]
+                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerows(all_results)
+
+            print(f"\nResults saved to: {result_path} ({len(all_results)} combinations)")
 
 
 if __name__ == "__main__":
