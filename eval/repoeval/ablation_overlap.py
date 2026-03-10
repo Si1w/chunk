@@ -81,6 +81,14 @@ class OverlapAblationStudy:
 
     def build_windows(self, max_chunk_size, overlap, language="python"):
         """Build sliding windows for a given overlap and chunk size."""
+        # Check if all window files already exist (windows don't depend on embed_model)
+        all_exist = all(
+            os.path.exists(self._ablation_window_path(repo, max_chunk_size, overlap))
+            for repo in CONSTANTS.REPOs
+        )
+        if all_exist:
+            return
+
         from chunk import SlidingChunkBuilder
 
         configs = {
@@ -162,8 +170,9 @@ class OverlapAblationStudy:
             query = query_line["query"]
             fpath_tuple = "/".join(query_line["metadata"]["fpath_tuple"])
 
+            k = min(top_k + 50, len(windows))
             if self.is_bm25:
-                results, scores = index.retrieve(bm25s.tokenize(query), k=top_k + 50)
+                results, scores = index.retrieve(bm25s.tokenize(query), k=k)
                 idx_list, score_list = results[0], scores[0]
             else:
                 import faiss
@@ -171,7 +180,7 @@ class OverlapAblationStudy:
                     [query], convert_to_numpy=True,
                 )
                 faiss.normalize_L2(query_embedding)
-                scores, indices = index.search(query_embedding, top_k + 50)
+                scores, indices = index.search(query_embedding, k)
                 idx_list, score_list = indices[0], scores[0]
 
             retrieved = []
@@ -240,8 +249,8 @@ class OverlapAblationStudy:
             "split": split,
             "top_k": top_k,
             "passk": passk,
-            "EM": compute_score_by_repo_with_metadata(completion_lines, "EM", passk, self.llm),
-            "ES": compute_score_by_repo_with_metadata(completion_lines, "ES", passk, self.llm),
+            "EM": compute_score_by_repo_with_metadata(completion_lines, "EM", passk),
+            "ES": compute_score_by_repo_with_metadata(completion_lines, "ES", passk),
             "avg_token_cost": compute_token_cost(completion_lines),
         }
 
