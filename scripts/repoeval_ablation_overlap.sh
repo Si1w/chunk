@@ -3,10 +3,9 @@
 # Submits one GPU job per LLM so each job loads the model only once.
 #
 # Usage:
-#   bash repoeval_ablation_overlap.sh [config]                                  # submit all LLMs
-#   bash repoeval_ablation_overlap.sh <llm> [config]                            # submit single LLM
-#   bash repoeval_ablation_overlap.sh [--skip_window] [--skip_retrieval] [--skip_completion] [config]
-#   sbatch ... repoeval_ablation_overlap.sh --run <llm> [config] [--skip_*]     # execute (called by sbatch)
+#   bash repoeval_ablation_overlap.sh [config]                      # submit all LLMs
+#   bash repoeval_ablation_overlap.sh <llm> [config]                # submit single LLM
+#   Options: --skip_window --skip_retrieval --skip_completion       # can appear anywhere
 #
 # --- SLURM directives (GPU for vLLM inference) ---
 #SBATCH -p gpu
@@ -27,14 +26,16 @@ SCRIPT_PATH="$(realpath "$0")"
 DEFAULT_CONFIG="${PROJECT_DIR}/configs/ablation_overlap.yaml"
 
 # --- Parse --skip_* flags from any position ---
-SKIP_FLAGS=()
+SKIP_WINDOW=false
+SKIP_RETRIEVAL=false
+SKIP_COMPLETION=false
 POSITIONAL=()
 for arg in "$@"; do
     case "${arg}" in
-        --skip_window|--skip_retrieval|--skip_completion)
-            SKIP_FLAGS+=("${arg}") ;;
-        *)
-            POSITIONAL+=("${arg}") ;;
+        --skip_window)      SKIP_WINDOW=true ;;
+        --skip_retrieval)   SKIP_RETRIEVAL=true ;;
+        --skip_completion)  SKIP_COMPLETION=true ;;
+        *)                  POSITIONAL+=("${arg}") ;;
     esac
 done
 set -- "${POSITIONAL[@]+"${POSITIONAL[@]}"}"
@@ -48,7 +49,8 @@ submit_job() {
     JOB_ID=$(sbatch \
         --job-name="ablation_overlap_${safe_name}" \
         --output="ablation_overlap_${safe_name}_%j.out" \
-        "${SCRIPT_PATH}" --run "${llm}" "${config}" "${SKIP_FLAGS[@]+"${SKIP_FLAGS[@]}"}" \
+        "${SCRIPT_PATH}" --run "${llm}" "${config}" \
+            "${SKIP_WINDOW}" "${SKIP_RETRIEVAL}" "${SKIP_COMPLETION}" \
         | awk '{print $4}')
     echo "Submitted: ${llm} -> job ${JOB_ID}"
 }
@@ -57,16 +59,26 @@ submit_job() {
 if [ "${1:-}" = "--run" ]; then
     LLM="${2:?Missing llm}"
     CONFIG="${3:-${DEFAULT_CONFIG}}"
+    SKIP_WINDOW="${4:-false}"
+    SKIP_RETRIEVAL="${5:-false}"
+    SKIP_COMPLETION="${6:-false}"
 
     echo "=== Overlap Ablation: ${LLM} ==="
     echo "Config: ${CONFIG}"
+    echo "Skip: window=${SKIP_WINDOW} retrieval=${SKIP_RETRIEVAL} completion=${SKIP_COMPLETION}"
     echo "GPU: $(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>/dev/null || echo 'N/A')"
     echo "Start: $(date)"
 
+    SKIP_ARGS=""
+    [ "${SKIP_WINDOW}" = "true" ] && SKIP_ARGS="${SKIP_ARGS} --skip_window"
+    [ "${SKIP_RETRIEVAL}" = "true" ] && SKIP_ARGS="${SKIP_ARGS} --skip_retrieval"
+    [ "${SKIP_COMPLETION}" = "true" ] && SKIP_ARGS="${SKIP_ARGS} --skip_completion"
+
+    # shellcheck disable=SC2086
     uv run python -m eval.repoeval.ablation_overlap \
         --config "${CONFIG}" \
         --llm "${LLM}" \
-        "${SKIP_FLAGS[@]+"${SKIP_FLAGS[@]}"}"
+        ${SKIP_ARGS}
 
     echo "=== Done: $(date) ==="
     exit 0
