@@ -151,6 +151,11 @@ class OverlapAblationStudy:
 
     def retrieval(self, max_chunk_size, overlap, split, context_length, prompt_type, top_k):
         """Retrieve top-k windows for the ablation configuration."""
+        output_path = self._ablation_inference_corpus_path(split, max_chunk_size, overlap, top_k)
+        if os.path.exists(output_path):
+            print(f"  Retrieval already done, skipping: {output_path}")
+            return
+
         query_lines = Tools.load_jsonl(
             FilePathBuilder.query_windows_path(split, context_length, prompt_type, window_size=20)
         )
@@ -205,13 +210,25 @@ class OverlapAblationStudy:
             self._ablation_inference_corpus_path(split, max_chunk_size, overlap, top_k),
         )
 
-    def run_completion(self, inference, max_chunk_size, overlap, split, top_k,
-                       max_crossfile_context):
-        """Run code completion for the ablation configuration using vLLM.
+    def _ensure_inference(self, max_seq_length, max_generate_tokens):
+        """Lazily initialize CodeCompletionInference on first use."""
+        if not hasattr(self, "_inference"):
+            self._inference = CodeCompletionInference(
+                llm=self.llm,
+                max_generate_tokens=max_generate_tokens,
+                max_seq_length=max_seq_length,
+            )
+        return self._inference
 
-        Args:
-            inference: Reusable CodeCompletionInference instance.
-        """
+    def run_completion(self, max_chunk_size, overlap, split, top_k,
+                       max_crossfile_context, max_seq_length=8192, max_generate_tokens=50):
+        """Run code completion for the ablation configuration using vLLM."""
+        output_path = self._ablation_completion_path(split, max_chunk_size, overlap, top_k, max_crossfile_context)
+        if os.path.exists(output_path):
+            print(f"  Completion already done, skipping: {output_path}")
+            return
+
+        inference = self._ensure_inference(max_seq_length, max_generate_tokens)
         corpus_path = self._ablation_inference_corpus_path(split, max_chunk_size, overlap, top_k)
         inference_corpus = Tools.load_jsonl(corpus_path)
 
@@ -268,14 +285,6 @@ class OverlapAblationStudy:
             from sentence_transformers import SentenceTransformer
             self._embed_model_instance = SentenceTransformer(self.embed_model, trust_remote_code=True)
 
-        inference = None
-        if not skip_completion:
-            inference = CodeCompletionInference(
-                llm=self.llm,
-                max_generate_tokens=max_generate_tokens,
-                max_seq_length=max_seq_length,
-            )
-
         all_results = []
 
         for max_chunk_size in self.max_chunk_sizes:
@@ -291,8 +300,10 @@ class OverlapAblationStudy:
                 for max_crossfile_context in self.max_crossfile_contexts:
                     if not skip_completion:
                         self.run_completion(
-                            inference, max_chunk_size, overlap, split, top_k,
+                            max_chunk_size, overlap, split, top_k,
                             max_crossfile_context,
+                            max_seq_length=max_seq_length,
+                            max_generate_tokens=max_generate_tokens,
                         )
 
                     result = self.compute_scores(
