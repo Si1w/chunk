@@ -306,6 +306,13 @@ class OverlapAblationStudy:
                             max_generate_tokens=max_generate_tokens,
                         )
 
+                    completion_path = self._ablation_completion_path(
+                        split, max_chunk_size, overlap, top_k, max_crossfile_context,
+                    )
+                    if not os.path.exists(completion_path):
+                        print(f"  Completion not found, skipping score: {completion_path}")
+                        continue
+
                     result = self.compute_scores(
                         max_chunk_size, overlap, split, top_k, max_crossfile_context, passk,
                     )
