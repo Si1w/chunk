@@ -3,9 +3,10 @@
 # Submits one GPU job per LLM so each job loads the model only once.
 #
 # Usage:
-#   bash repoeval_ablation_overlap.sh [config]                      # submit all LLMs
-#   bash repoeval_ablation_overlap.sh <llm> [config]                # submit single LLM
-#   sbatch ... repoeval_ablation_overlap.sh --run <llm> [config]    # execute (called by sbatch)
+#   bash repoeval_ablation_overlap.sh [config]                                  # submit all LLMs
+#   bash repoeval_ablation_overlap.sh <llm> [config]                            # submit single LLM
+#   bash repoeval_ablation_overlap.sh [--skip_window] [--skip_retrieval] [--skip_completion] [config]
+#   sbatch ... repoeval_ablation_overlap.sh --run <llm> [config] [--skip_*]     # execute (called by sbatch)
 #
 # --- SLURM directives (GPU for vLLM inference) ---
 #SBATCH -p gpu
@@ -25,6 +26,19 @@ cd "${PROJECT_DIR}"
 SCRIPT_PATH="$(realpath "$0")"
 DEFAULT_CONFIG="${PROJECT_DIR}/configs/ablation_overlap.yaml"
 
+# --- Parse --skip_* flags from any position ---
+SKIP_FLAGS=()
+POSITIONAL=()
+for arg in "$@"; do
+    case "${arg}" in
+        --skip_window|--skip_retrieval|--skip_completion)
+            SKIP_FLAGS+=("${arg}") ;;
+        *)
+            POSITIONAL+=("${arg}") ;;
+    esac
+done
+set -- "${POSITIONAL[@]+"${POSITIONAL[@]}"}"
+
 submit_job() {
     local llm="$1" config="$2"
     local safe_name
@@ -34,7 +48,7 @@ submit_job() {
     JOB_ID=$(sbatch \
         --job-name="ablation_overlap_${safe_name}" \
         --output="ablation_overlap_${safe_name}_%j.out" \
-        "${SCRIPT_PATH}" --run "${llm}" "${config}" \
+        "${SCRIPT_PATH}" --run "${llm}" "${config}" "${SKIP_FLAGS[@]+"${SKIP_FLAGS[@]}"}" \
         | awk '{print $4}')
     echo "Submitted: ${llm} -> job ${JOB_ID}"
 }
@@ -51,7 +65,8 @@ if [ "${1:-}" = "--run" ]; then
 
     uv run python -m eval.repoeval.ablation_overlap \
         --config "${CONFIG}" \
-        --llm "${LLM}"
+        --llm "${LLM}" \
+        "${SKIP_FLAGS[@]+"${SKIP_FLAGS[@]}"}"
 
     echo "=== Done: $(date) ==="
     exit 0
