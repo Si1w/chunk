@@ -5,7 +5,7 @@
 # Usage:
 #   bash repoeval_ablation_overlap.sh [config]                      # submit all LLMs
 #   bash repoeval_ablation_overlap.sh <llm> [config]                # submit single LLM
-#   Options: --skip_window --skip_retrieval --skip_completion       # can appear anywhere
+#   Options: --steps window retrieval completion score              # specify steps to run
 #
 # --- SLURM directives (GPU for vLLM inference) ---
 #SBATCH -p gpu
@@ -25,22 +25,36 @@ cd "${PROJECT_DIR}"
 SCRIPT_PATH="$(realpath "$0")"
 DEFAULT_CONFIG="${PROJECT_DIR}/configs/ablation_overlap.yaml"
 
-# --- Parse flags from any position ---
-SKIP_WINDOW=false
-SKIP_RETRIEVAL=false
-SKIP_COMPLETION=false
-SCORE=false
+# --- Parse --steps and positional args ---
+STEPS=()
 POSITIONAL=()
+PARSING_STEPS=false
 for arg in "$@"; do
-    case "${arg}" in
-        --skip_window)      SKIP_WINDOW=true ;;
-        --skip_retrieval)   SKIP_RETRIEVAL=true ;;
-        --skip_completion)  SKIP_COMPLETION=true ;;
-        --score)            SCORE=true ;;
-        *)                  POSITIONAL+=("${arg}") ;;
-    esac
+    if [ "${arg}" = "--steps" ]; then
+        PARSING_STEPS=true
+        continue
+    fi
+    if [ "${PARSING_STEPS}" = true ]; then
+        case "${arg}" in
+            window|retrieval|completion|score)
+                STEPS+=("${arg}")
+                ;;
+            *)
+                PARSING_STEPS=false
+                POSITIONAL+=("${arg}")
+                ;;
+        esac
+    else
+        POSITIONAL+=("${arg}")
+    fi
 done
 set -- "${POSITIONAL[@]+"${POSITIONAL[@]}"}"
+
+if [ ${#STEPS[@]} -eq 0 ]; then
+    echo "Error: --steps is required (window, retrieval, completion, score)" >&2
+    exit 1
+fi
+STEPS_STR="${STEPS[*]}"
 
 submit_job() {
     local llm="$1" config="$2"
@@ -51,8 +65,7 @@ submit_job() {
     JOB_ID=$(sbatch \
         --job-name="ablation_overlap_${safe_name}" \
         --output="ablation_overlap_${safe_name}_%j.out" \
-        "${SCRIPT_PATH}" --run "${llm}" "${config}" \
-            "${SKIP_WINDOW}" "${SKIP_RETRIEVAL}" "${SKIP_COMPLETION}" "${SCORE}" \
+        "${SCRIPT_PATH}" --run "${llm}" "${config}" "${STEPS_STR}" \
         | awk '{print $4}')
     echo "Submitted: ${llm} -> job ${JOB_ID}"
 }
@@ -61,29 +74,19 @@ submit_job() {
 if [ "${1:-}" = "--run" ]; then
     LLM="${2:?Missing llm}"
     CONFIG="${3:-${DEFAULT_CONFIG}}"
-    SKIP_WINDOW="${4:-false}"
-    SKIP_RETRIEVAL="${5:-false}"
-    SKIP_COMPLETION="${6:-false}"
-    SCORE="${7:-false}"
+    RUN_STEPS="${4:?Missing steps}"
 
     echo "=== Overlap Ablation: ${LLM} ==="
     echo "Config: ${CONFIG}"
-    echo "Skip: window=${SKIP_WINDOW} retrieval=${SKIP_RETRIEVAL} completion=${SKIP_COMPLETION}"
-    echo "Score: ${SCORE}"
+    echo "Steps: ${RUN_STEPS}"
     echo "GPU: $(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>/dev/null || echo 'N/A')"
     echo "Start: $(date)"
-
-    EXTRA_ARGS=""
-    [ "${SKIP_WINDOW}" = "true" ] && EXTRA_ARGS="${EXTRA_ARGS} --skip_window"
-    [ "${SKIP_RETRIEVAL}" = "true" ] && EXTRA_ARGS="${EXTRA_ARGS} --skip_retrieval"
-    [ "${SKIP_COMPLETION}" = "true" ] && EXTRA_ARGS="${EXTRA_ARGS} --skip_completion"
-    [ "${SCORE}" = "true" ] && EXTRA_ARGS="${EXTRA_ARGS} --score"
 
     # shellcheck disable=SC2086
     uv run python -m eval.repoeval.ablation_overlap \
         --config "${CONFIG}" \
         --llm "${LLM}" \
-        ${EXTRA_ARGS}
+        --steps ${RUN_STEPS}
 
     echo "=== Done: $(date) ==="
     exit 0

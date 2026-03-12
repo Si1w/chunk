@@ -273,8 +273,16 @@ class OverlapAblationStudy:
 
     def run_ablation(self, split, context_length, prompt_type, top_k,
                      max_seq_length=8192, max_generate_tokens=50,
-                     skip_window=False, skip_retrieval=False, skip_completion=False):
-        """Run the ablation study pipeline (window, retrieval, completion)."""
+                     steps=None):
+        """Run the ablation study pipeline for the specified steps.
+
+        Args:
+            steps: set of steps to run. Valid values: {"window", "retrieval", "completion"}.
+                   If None, runs all steps.
+        """
+        if steps is None:
+            steps = {"window", "retrieval", "completion"}
+
         # Build query windows once (shared across all overlap/chunk_size combos)
         query_path = FilePathBuilder.query_windows_path(split, context_length, prompt_type, window_size=20)
         if not os.path.exists(query_path):
@@ -290,13 +298,13 @@ class OverlapAblationStudy:
                 print(f"\n--- Ablation: chunk_size={max_chunk_size}, overlap={overlap}, "
                       f"retriever={'bm25' if self.is_bm25 else self.embed_model} ---")
 
-                if not skip_window:
+                if "window" in steps:
                     self.build_windows(max_chunk_size, overlap)
-                if not skip_retrieval:
+                if "retrieval" in steps:
                     self.retrieval(max_chunk_size, overlap, split, context_length, prompt_type, top_k)
 
                 for max_crossfile_context in self.max_crossfile_contexts:
-                    if not skip_completion:
+                    if "completion" in steps:
                         self.run_completion(
                             max_chunk_size, overlap, split, top_k,
                             max_crossfile_context,
@@ -330,10 +338,13 @@ def main():
     parser.add_argument("--config", type=str, required=True, help="Path to YAML config file.")
     parser.add_argument("--llm", type=str, default=None, help="Run only for a specific LLM (default: all).")
     parser.add_argument("--embed_model", type=str, default=None, help="Run only for a specific embed model (default: all).")
-    parser.add_argument("--skip_window", action="store_true", help="Skip window building step.")
-    parser.add_argument("--skip_retrieval", action="store_true", help="Skip retrieval step.")
-    parser.add_argument("--skip_completion", action="store_true", help="Skip code completion step.")
-    parser.add_argument("--score", action="store_true", help="Compute scores and export CSV (off by default).")
+    parser.add_argument(
+        "--steps", nargs="+",
+        choices=["window", "retrieval", "completion", "score"],
+        required=True,
+        help="Steps to run: window (build chunks), retrieval (retrieve contexts), "
+             "completion (LLM inference), score (compute metrics and export CSV).",
+    )
     args = parser.parse_args()
 
     with open(args.config, "r") as f:
@@ -345,9 +356,12 @@ def main():
     inference_cfg = cfg["inference"]
     eval_cfg = cfg["evaluation"]
 
+    steps = set(args.steps)
     embed_models = [args.embed_model] if args.embed_model else retrieval_cfg["embed_models"]
     llms = [args.llm] if args.llm else inference_cfg["llms"]
     splits = ["api", "line"] if eval_cfg.get("split") == "both" else [eval_cfg.get("split", "api")]
+
+    pipeline_steps = steps & {"window", "retrieval", "completion"}
 
     for split in splits:
         all_results = []
@@ -363,19 +377,18 @@ def main():
                     batch_size=retrieval_cfg.get("batch_size", 32),
                 )
 
-                ablation.run_ablation(
-                    split=split,
-                    context_length=query["context_length"],
-                    prompt_type=query["prompt_type"],
-                    top_k=retrieval_cfg["top_k"],
-                    max_seq_length=inference_cfg["max_seq_length"],
-                    max_generate_tokens=inference_cfg["max_generate_tokens"],
-                    skip_window=args.skip_window,
-                    skip_retrieval=args.skip_retrieval,
-                    skip_completion=args.skip_completion,
-                )
+                if pipeline_steps:
+                    ablation.run_ablation(
+                        split=split,
+                        context_length=query["context_length"],
+                        prompt_type=query["prompt_type"],
+                        top_k=retrieval_cfg["top_k"],
+                        max_seq_length=inference_cfg["max_seq_length"],
+                        max_generate_tokens=inference_cfg["max_generate_tokens"],
+                        steps=pipeline_steps,
+                    )
 
-                if args.score:
+                if "score" in steps:
                     results = ablation.score_ablation(
                         split=split,
                         top_k=retrieval_cfg["top_k"],
@@ -383,7 +396,7 @@ def main():
                     )
                     all_results.extend(results)
 
-        if args.score:
+        if "score" in steps:
             result_path = OverlapAblationStudy.ablation_result_path(split)
             with open(result_path, "w", newline="", encoding="utf-8") as f:
                 fieldnames = ["retriever", "llm", "max_chunk_size", "overlap",
