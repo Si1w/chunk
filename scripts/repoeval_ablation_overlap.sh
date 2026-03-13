@@ -25,6 +25,28 @@ cd "${PROJECT_DIR}"
 SCRIPT_PATH="$(realpath "$0")"
 DEFAULT_CONFIG="${PROJECT_DIR}/configs/ablation_overlap.yaml"
 
+# --- Mode: execute (called by sbatch via --run flag) ---
+if [ "${1:-}" = "--run" ]; then
+    LLM="${2:?Missing llm}"
+    CONFIG="${3:-${DEFAULT_CONFIG}}"
+    RUN_STEPS="${4:?Missing steps}"
+
+    echo "=== Overlap Ablation: ${LLM} ==="
+    echo "Config: ${CONFIG}"
+    echo "Steps: ${RUN_STEPS}"
+    echo "GPU: $(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>/dev/null || echo 'N/A')"
+    echo "Start: $(date)"
+
+    # shellcheck disable=SC2086
+    uv run python -m eval.repoeval.ablation_overlap \
+        --config "${CONFIG}" \
+        --llm "${LLM}" \
+        --steps ${RUN_STEPS}
+
+    echo "=== Done: $(date) ==="
+    exit 0
+fi
+
 # --- Parse --steps and positional args ---
 STEPS=()
 POSITIONAL=()
@@ -69,28 +91,6 @@ submit_job() {
         | awk '{print $4}')
     echo "Submitted: ${llm} -> job ${JOB_ID}"
 }
-
-# --- Mode: execute (called by sbatch via --run flag) ---
-if [ "${1:-}" = "--run" ]; then
-    LLM="${2:?Missing llm}"
-    CONFIG="${3:-${DEFAULT_CONFIG}}"
-    RUN_STEPS="${4:?Missing steps}"
-
-    echo "=== Overlap Ablation: ${LLM} ==="
-    echo "Config: ${CONFIG}"
-    echo "Steps: ${RUN_STEPS}"
-    echo "GPU: $(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>/dev/null || echo 'N/A')"
-    echo "Start: $(date)"
-
-    # shellcheck disable=SC2086
-    uv run python -m eval.repoeval.ablation_overlap \
-        --config "${CONFIG}" \
-        --llm "${LLM}" \
-        --steps ${RUN_STEPS}
-
-    echo "=== Done: $(date) ==="
-    exit 0
-fi
 
 # --- Mode: submit single LLM ---
 if [ $# -ge 1 ] && [ "${1:-}" != "--run" ] && [[ "${1:-}" == */* ]]; then
