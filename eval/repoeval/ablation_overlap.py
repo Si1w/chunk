@@ -289,7 +289,7 @@ class OverlapAblationStudy:
             from .make_window import make_query_window
             make_query_window(context_length, prompt_type, CONSTANTS.REPOs, window_size=20)
 
-        if not self.is_bm25 and not hasattr(self, "_embed_model_instance"):
+        if "retrieval" in steps and not self.is_bm25 and not hasattr(self, "_embed_model_instance"):
             from sentence_transformers import SentenceTransformer
             self._embed_model_instance = SentenceTransformer(self.embed_model, trust_remote_code=True)
 
