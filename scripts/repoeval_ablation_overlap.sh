@@ -65,27 +65,104 @@ if [ "${1:-}" = "--step" ]; then
         esac
     done
 
-    safe_name=$(echo "ablation_overlap_${STEP}" | tr '/' '_')
     case "${STEP}" in
         chunk|score)
             JOB_ID=$(sbatch \
-                --job-name="${safe_name}" \
+                --job-name="ablation_overlap_${STEP}" \
                 --partition=cpu \
                 --mem=32G \
                 "${SCRIPT_PATH}" --run "${STEP}" "${EXTRA_ARGS[@]}" "${CONFIG}" \
                 | awk '{print $4}')
+            echo "Submitted ${STEP} -> job ${JOB_ID}"
             ;;
-        retrieve|infer)
-            JOB_ID=$(sbatch \
-                --job-name="${safe_name}" \
-                --partition=gpu \
-                --gpus=1 \
-                --constraint="a100|h100|h200|l40s" \
-                "${SCRIPT_PATH}" --run "${STEP}" "${EXTRA_ARGS[@]}" "${CONFIG}" \
-                | awk '{print $4}')
+        retrieve)
+            if [ ${#EXTRA_ARGS[@]} -gt 0 ]; then
+                # Single model specified via --embed_model
+                em="${EXTRA_ARGS[1]}"
+                safe_name=$(echo "ablation_overlap_ret_${em}" | tr '/' '_')
+                if [ "${em}" = "bm25" ]; then
+                    JOB_ID=$(sbatch \
+                        --job-name="${safe_name}" \
+                        --partition=cpu \
+                        "${SCRIPT_PATH}" --run retrieve --embed_model "${em}" "${CONFIG}" \
+                        | awk '{print $4}')
+                else
+                    JOB_ID=$(sbatch \
+                        --job-name="${safe_name}" \
+                        --partition=gpu \
+                        --gpus=1 \
+                        --constraint="a100|h100|h200|l40s" \
+                        "${SCRIPT_PATH}" --run retrieve --embed_model "${em}" "${CONFIG}" \
+                        | awk '{print $4}')
+                fi
+                echo "Submitted retrieve ${em} -> job ${JOB_ID}"
+            else
+                # No --embed_model: one job per model from config
+                EMBED_MODELS=$(uv run python -c "
+import yaml
+with open('${CONFIG}') as f:
+    cfg = yaml.safe_load(f)
+for m in cfg['retrieval']['embed_models']:
+    if m != 'none':
+        print(m)
+")
+                while IFS= read -r em; do
+                    safe_name=$(echo "ablation_overlap_ret_${em}" | tr '/' '_')
+                    if [ "${em}" = "bm25" ]; then
+                        JOB_ID=$(sbatch \
+                            --job-name="${safe_name}" \
+                            --partition=cpu \
+                            "${SCRIPT_PATH}" --run retrieve --embed_model "${em}" "${CONFIG}" \
+                            | awk '{print $4}')
+                    else
+                        JOB_ID=$(sbatch \
+                            --job-name="${safe_name}" \
+                            --partition=gpu \
+                            --gpus=1 \
+                            --constraint="a100|h100|h200|l40s" \
+                            "${SCRIPT_PATH}" --run retrieve --embed_model "${em}" "${CONFIG}" \
+                            | awk '{print $4}')
+                    fi
+                    echo "Submitted retrieve ${em} -> job ${JOB_ID}"
+                done <<< "${EMBED_MODELS}"
+            fi
+            ;;
+        infer)
+            if [ ${#EXTRA_ARGS[@]} -gt 0 ]; then
+                # Single LLM specified via --llm
+                llm="${EXTRA_ARGS[1]}"
+                safe_name=$(echo "ablation_overlap_infer_${llm}" | tr '/' '_')
+                JOB_ID=$(sbatch \
+                    --job-name="${safe_name}" \
+                    --partition=gpu \
+                    --gpus=1 \
+                    --constraint="a100|h100|h200|l40s" \
+                    "${SCRIPT_PATH}" --run infer --llm "${llm}" "${CONFIG}" \
+                    | awk '{print $4}')
+                echo "Submitted infer ${llm} -> job ${JOB_ID}"
+            else
+                # No --llm: one job per LLM from config
+                LLMS=$(uv run python -c "
+import yaml
+with open('${CONFIG}') as f:
+    cfg = yaml.safe_load(f)
+for m in cfg['inference']['llms']:
+    print(m)
+")
+                while IFS= read -r llm; do
+                    safe_name=$(echo "ablation_overlap_infer_${llm}" | tr '/' '_')
+                    JOB_ID=$(sbatch \
+                        --job-name="${safe_name}" \
+                        --partition=gpu \
+                        --gpus=1 \
+                        --constraint="a100|h100|h200|l40s" \
+                        "${SCRIPT_PATH}" --run infer --llm "${llm}" "${CONFIG}" \
+                        | awk '{print $4}')
+                    echo "Submitted infer ${llm} -> job ${JOB_ID}"
+                done <<< "${LLMS}"
+            fi
             ;;
     esac
-    echo "Submitted ${STEP} -> job ${JOB_ID}"
     exit 0
 fi
 
