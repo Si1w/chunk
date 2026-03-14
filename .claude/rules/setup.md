@@ -12,7 +12,7 @@ All code runs on a HPC cluster (SLURM). Follow the instructions below to set up 
 
 | Type | Model |
 |------|-------|
-| GPU  | h200, b200, h100 |
+| GPU  | h200, h100 |
 | GPU  | a100 (40g/80g), l40s, rtx6000 |
 | GPU  | a40, a30, rtx3070, rtx2080 |
 | CPU  | sapphire_rapids, icelake |

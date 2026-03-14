@@ -80,7 +80,7 @@ if [ "${1:-}" = "--step" ]; then
                 --job-name="${safe_name}" \
                 --partition=gpu \
                 --gpus=1 \
-                --constraint="a100|h100|h200|b200|l40s" \
+                --constraint="a100|h100|h200|l40s" \
                 "${SCRIPT_PATH}" --run "${STEP}" "${EXTRA_ARGS[@]}" "${CONFIG}" \
                 | awk '{print $4}')
             ;;
@@ -127,7 +127,7 @@ while IFS= read -r em; do
             --dependency="afterok:${JOB_CHUNK}" \
             --partition=gpu \
             --gpus=1 \
-            --constraint="a100|h100|h200|b200|l40s" \
+            --constraint="a100|h100|h200|l40s" \
             "${SCRIPT_PATH}" --run retrieve --embed_model "${em}" "${CONFIG}" \
             | awk '{print $4}')
     fi
@@ -152,7 +152,7 @@ while IFS= read -r llm; do
         --dependency="afterok${RETRIEVE_JOBS}" \
         --partition=gpu \
         --gpus=1 \
-        --constraint="a100|h100|h200|b200|l40s" \
+        --constraint="a100|h100|h200|l40s" \
         "${SCRIPT_PATH}" --run infer --llm "${llm}" "${CONFIG}" \
         | awk '{print $4}')
     echo "Submitted infer ${llm} -> job ${JOB_ID}"
