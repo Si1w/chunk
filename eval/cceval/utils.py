@@ -30,13 +30,13 @@ class FilePathBuilder:
 
     @staticmethod
     def repo_windows_path(repo, method, max_chunk_size):
-        out = os.path.join(_BASE_DIR, "window", FilePathBuilder._subdir, f"{repo}_{method}_{max_chunk_size}.jsonl")
+        out = os.path.join(_BASE_DIR, "window", f"{repo}_{method}_{max_chunk_size}.jsonl")
         FilePathBuilder._ensure_dir(out)
         return out
 
     @staticmethod
     def query_windows_path(window_size):
-        out = os.path.join(_BASE_DIR, "query", FilePathBuilder._subdir, f"line_completion_{window_size}.jsonl")
+        out = os.path.join(_BASE_DIR, "query", f"line_completion_{window_size}.jsonl")
         FilePathBuilder._ensure_dir(out)
         return out
 
@@ -47,7 +47,7 @@ class FilePathBuilder:
     @staticmethod
     def index_window_path(repo, method, max_chunk_size, model_name):
         safe = Tools.safe_model_name(model_name)
-        out = os.path.join(_BASE_DIR, "index", FilePathBuilder._subdir, safe, f"{repo}_{method}_{max_chunk_size}.index")
+        out = os.path.join(_BASE_DIR, "index", safe, f"{repo}_{method}_{max_chunk_size}.index")
         FilePathBuilder._ensure_dir(out)
         return out
 
