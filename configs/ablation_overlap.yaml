@@ -1,48 +1,39 @@
-# Ablation study: sliding window overlap (RepoEval benchmark)
+# Ablation study: sliding window overlap
 
-# --- Ablation Parameters ---
 ablation:
-  overlap_values: [10, 15, 20, 25]
-  max_chunk_sizes: [1000, 2000, 3000]
-  max_crossfile_contexts: [2048, 4096, 8192]
+  overlap_lines: [0, 5, 10, 15, 20, 25]
 
-# --- Chunking ---
 chunking:
   language: python
-  method: sliding
+  max_chunk_sizes:
+    - 1000
+    - 2000
+    - 3000
   metadata_template: repoeval
-  chunk_expansion: false
-  private_function: false
-  function_overlap: false
 
-# --- Query ---
 query:
   context_length: 2k
   prompt_type: codex
   window_size: 20
 
-# --- Retrieval ---
 retrieval:
   embed_models:
     - bm25
     - Qwen/Qwen3-Embedding-0.6B
-    - google/embeddinggemma-300m
-    - Qwen/Qwen3-Embedding-4B
   batch_size: 32
   top_k: 10
 
-# --- Inference ---
 inference:
   llms:
     - Qwen/Qwen2.5-Coder-7B
     - deepseek-ai/deepseek-coder-6.7b-base
     - ByteDance-Seed/Seed-Coder-8B-Base
-    - Qwen/Qwen3.5-9B-Base
   max_seq_length: 8192
+  max_crossfile_contexts:
+    - 8192
   max_generate_tokens: 50
   temperature: 0
 
-# --- Evaluation ---
 evaluation:
   split: both
   passk: 1

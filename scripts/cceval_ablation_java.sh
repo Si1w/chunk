@@ -1,10 +1,10 @@
 #!/bin/bash
-# Ablation: sliding window overlap
+# Cross-language validation: cceval on Java
 #
 # Usage:
-#   bash scripts/repoeval_ablation_overlap.sh [config]                                          # submit full pipeline
-#   bash scripts/repoeval_ablation_overlap.sh --step <step> [--embed_model M|--llm L] [config]  # submit single step
-#   sbatch ... scripts/repoeval_ablation_overlap.sh --run <step> [--embed_model M|--llm L] [config]  # execute
+#   bash scripts/cceval_ablation_java.sh [config]                                          # submit full pipeline
+#   bash scripts/cceval_ablation_java.sh --step <step> [--embed_model M|--llm L] [config]  # submit single step
+#   sbatch ... scripts/cceval_ablation_java.sh --run <step> [--embed_model M|--llm L] [config]  # execute
 #
 # --- SLURM directives ---
 #SBATCH -t 24:00:00
@@ -19,7 +19,7 @@ set -euo pipefail
 PROJECT_DIR="${SLURM_SUBMIT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
 cd "${PROJECT_DIR}"
 SCRIPT_PATH="$(realpath "$0")"
-DEFAULT_CONFIG="${PROJECT_DIR}/configs/ablation_overlap.yaml"
+DEFAULT_CONFIG="${PROJECT_DIR}/configs/ablation_java.yaml"
 
 # --- Execute mode (called by sbatch via --run flag) ---
 if [ "${1:-}" = "--run" ]; then
@@ -36,12 +36,12 @@ if [ "${1:-}" = "--run" ]; then
         esac
     done
 
-    echo "=== Ablation overlap: ${STEP} ==="
+    echo "=== cceval Java: ${STEP} ==="
     echo "Config: ${CONFIG}"
     echo "GPU: $(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>/dev/null || echo 'N/A')"
     echo "Start: $(date)"
 
-    uv run python -m eval.repoeval.ablation_overlap \
+    uv run python -m eval.cceval.ablation_java \
         --config "${CONFIG}" \
         --steps "${STEP}" \
         "${EXTRA_ARGS[@]}"
@@ -65,9 +65,9 @@ if [ "${1:-}" = "--step" ]; then
         esac
     done
 
-    safe_name=$(echo "ablation_overlap_${STEP}" | tr '/' '_')
+    safe_name=$(echo "cceval_java_${STEP}" | tr '/' '_')
     case "${STEP}" in
-        chunk|score)
+        fetch|chunk|score)
             JOB_ID=$(sbatch \
                 --job-name="${safe_name}" \
                 --partition=cpu \
@@ -92,9 +92,19 @@ fi
 # --- Submit full pipeline with dependencies ---
 CONFIG="${1:-${DEFAULT_CONFIG}}"
 
-# Step 1: chunk (CPU)
+# Step 0: fetch (CPU)
+JOB_FETCH=$(sbatch \
+    --job-name="cceval_java_fetch" \
+    --partition=cpu \
+    --mem=16G \
+    "${SCRIPT_PATH}" --run fetch "${CONFIG}" \
+    | awk '{print $4}')
+echo "Submitted fetch -> job ${JOB_FETCH}"
+
+# Step 1: chunk (CPU, depends on fetch)
 JOB_CHUNK=$(sbatch \
-    --job-name="ablation_overlap_chunk" \
+    --job-name="cceval_java_chunk" \
+    --dependency="afterok:${JOB_FETCH}" \
     --partition=cpu \
     --mem=32G \
     "${SCRIPT_PATH}" --run chunk "${CONFIG}" \
@@ -116,14 +126,14 @@ while IFS= read -r em; do
     safe_name=$(echo "${em}" | tr '/' '_')
     if [ "${em}" = "bm25" ]; then
         JOB_ID=$(sbatch \
-            --job-name="ablation_overlap_ret_${safe_name}" \
+            --job-name="cceval_java_ret_${safe_name}" \
             --dependency="afterok:${JOB_CHUNK}" \
             --partition=cpu \
             "${SCRIPT_PATH}" --run retrieve --embed_model "${em}" "${CONFIG}" \
             | awk '{print $4}')
     else
         JOB_ID=$(sbatch \
-            --job-name="ablation_overlap_ret_${safe_name}" \
+            --job-name="cceval_java_ret_${safe_name}" \
             --dependency="afterok:${JOB_CHUNK}" \
             --partition=gpu \
             --gpus=1 \
@@ -148,7 +158,7 @@ INFER_JOBS=""
 while IFS= read -r llm; do
     safe_name=$(echo "${llm}" | tr '/' '_')
     JOB_ID=$(sbatch \
-        --job-name="ablation_overlap_infer_${safe_name}" \
+        --job-name="cceval_java_infer_${safe_name}" \
         --dependency="afterok${RETRIEVE_JOBS}" \
         --partition=gpu \
         --gpus=1 \
@@ -161,7 +171,7 @@ done <<< "${LLMS}"
 
 # Step 4: score (CPU, depends on all infer jobs)
 JOB_SCORE=$(sbatch \
-    --job-name="ablation_overlap_score" \
+    --job-name="cceval_java_score" \
     --dependency="afterok${INFER_JOBS}" \
     --partition=cpu \
     --mem=16G \
@@ -170,4 +180,4 @@ JOB_SCORE=$(sbatch \
 echo "Submitted score -> job ${JOB_SCORE}"
 
 echo ""
-echo "Pipeline: chunk(${JOB_CHUNK}) -> retrieve -> infer -> score(${JOB_SCORE})"
+echo "Pipeline: fetch(${JOB_FETCH}) -> chunk(${JOB_CHUNK}) -> retrieve -> infer -> score(${JOB_SCORE})"

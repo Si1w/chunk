@@ -1,7 +1,14 @@
-"""Ablation study for sliding window overlap parameters on RepoEval.
+"""Ablation study: sliding window overlap on code completion performance.
 
-Evaluates the impact of different overlap values and chunk sizes on
-code completion quality using sliding window chunking.
+Varies overlap_lines for SlidingChunkBuilder and runs the full evaluation
+pipeline (chunk -> retrieve -> infer -> score). Uses method names like
+'sliding_o{N}' to distinguish overlap variants in file paths.
+
+Usage:
+    uv run python -m eval.repoeval.ablation_overlap --config configs/ablation_overlap.yaml --steps chunk
+    uv run python -m eval.repoeval.ablation_overlap --config configs/ablation_overlap.yaml --steps retrieve --embed_model bm25
+    uv run python -m eval.repoeval.ablation_overlap --config configs/ablation_overlap.yaml --steps infer --llm Qwen/Qwen2.5-Coder-7B
+    uv run python -m eval.repoeval.ablation_overlap --config configs/ablation_overlap.yaml --steps score
 """
 
 import argparse
@@ -9,404 +16,247 @@ import csv
 import os
 from collections import defaultdict
 
-import bm25s
 import yaml
-from tqdm import tqdm
 
-from .code_completion import CodeCompletionInference
-from .compute_score import compute_score_by_repo_with_metadata, compute_token_cost
-from .utils import Tools, FilePathBuilder, CONSTANTS, is_context_file
-
-_BASE_DIR = os.path.dirname(__file__)
+from chunk import SlidingChunkBuilder
+from .make_window import make_query_window
+from .utils import CONSTANTS, FilePathBuilder, Tools
 
 
-class OverlapAblationStudy:
-    """Ablation study varying overlap and chunk size for sliding window chunking."""
+def overlap_method(n):
+    """Encode overlap_lines value into a method name for file paths."""
+    return f"sliding_o{n}"
 
-    def __init__(self, overlap_values, max_chunk_sizes, max_crossfile_contexts,
-                 embed_model, llm, batch_size=32):
-        self.overlap_values = overlap_values
-        self.max_chunk_sizes = max_chunk_sizes
-        self.max_crossfile_contexts = max_crossfile_contexts
-        self.embed_model = embed_model
-        self.llm = llm
-        self.batch_size = batch_size
-        self.method = "sliding"
-        self.is_bm25 = embed_model == "bm25"
 
-    def _ablation_window_path(self, repo, max_chunk_size, overlap):
-        out = os.path.join(
-            _BASE_DIR, "window", "ablation_overlap",
-            f"{repo}_{self.method}_{max_chunk_size}_overlap{overlap}.jsonl",
-        )
-        FilePathBuilder._ensure_dir(out)
-        return out
+def step_chunk(cfg):
+    """Build sliding-window repo chunks for each overlap value."""
+    chunking = cfg["chunking"]
+    query = cfg["query"]
+    repos = CONSTANTS.REPOs
+    overlap_values = cfg["ablation"]["overlap_lines"]
 
-    def _ablation_index_path(self, repo, max_chunk_size, overlap):
-        model_name = "bm25" if self.is_bm25 else Tools.safe_model_name(self.embed_model)
-        out = os.path.join(
-            _BASE_DIR, "index", "ablation_overlap", model_name,
-            f"{repo}_{self.method}_{max_chunk_size}_overlap{overlap}.index",
-        )
-        FilePathBuilder._ensure_dir(out)
-        return out
-
-    def _ablation_inference_corpus_path(self, split, max_chunk_size, overlap, top_k):
-        model_name = "bm25" if self.is_bm25 else Tools.safe_model_name(self.embed_model)
-        out = os.path.join(
-            _BASE_DIR, "inference_corpus", "ablation_overlap", model_name,
-            f"{split}_{self.method}_{max_chunk_size}_overlap{overlap}_{top_k}.jsonl",
-        )
-        FilePathBuilder._ensure_dir(out)
-        return out
-
-    def _ablation_completion_path(self, split, max_chunk_size, overlap, top_k, max_crossfile_context):
-        model_name = "bm25" if self.is_bm25 else Tools.safe_model_name(self.embed_model)
-        safe_llm = Tools.safe_model_name(self.llm)
-        out = os.path.join(
-            _BASE_DIR, "completion", "ablation_overlap", model_name, safe_llm,
-            f"{split}_{self.method}_{max_chunk_size}_overlap{overlap}_{top_k}_ctx{max_crossfile_context}.jsonl",
-        )
-        FilePathBuilder._ensure_dir(out)
-        return out
-
-    @staticmethod
-    def ablation_result_path(split):
-        out = os.path.join(
-            _BASE_DIR, "result", "ablation_overlap",
-            f"{split}_overlap_ablation_results.csv",
-        )
-        FilePathBuilder._ensure_dir(out)
-        return out
-
-    def build_windows(self, max_chunk_size, overlap, language="python"):
-        """Build sliding windows for a given overlap and chunk size."""
-        # Check if all window files already exist (windows don't depend on embed_model)
-        all_exist = all(
-            os.path.exists(self._ablation_window_path(repo, max_chunk_size, overlap))
-            for repo in CONSTANTS.REPOs
-        )
-        if all_exist:
-            return
-
-        from chunk import SlidingChunkBuilder
-
-        configs = {
-            "max_chunk_size": max_chunk_size,
-            "language": language,
-            "metadata_template": "repoeval",
-            "overlap_lines": overlap,
-        }
-        chunk_builder = SlidingChunkBuilder(**configs)
-
-        for repo in tqdm(CONSTANTS.REPOs, desc=f"Building windows chunk_size={max_chunk_size}, overlap={overlap}"):
-            source_code_files = Tools.iterate_repository(repo, language)
-            all_code_windows = []
-
-            for fpath_tuple, code in source_code_files.items():
-                code_windows = chunk_builder.chunkify(
-                    code,
-                    repo_level_metadata={"repo": repo, "fpath_tuple": "/".join(fpath_tuple)},
-                )
-                all_code_windows.extend(code_windows)
-
-            merged = defaultdict(list)
-            for w in all_code_windows:
-                merged[w["content"]].append(w["metadata"])
-
-            json_lines = [
-                {"context": context, "metadata": metadata_list}
-                for context, metadata_list in merged.items()
-            ]
-            Tools.dump_jsonl(json_lines, self._ablation_window_path(repo, max_chunk_size, overlap))
-
-    def _ensure_index(self, repo, max_chunk_size, overlap):
-        """Build index for a repo if it doesn't exist, then load it."""
-        index_path = self._ablation_index_path(repo, max_chunk_size, overlap)
-        if not os.path.exists(index_path):
-            window_path = self._ablation_window_path(repo, max_chunk_size, overlap)
-            windows = Tools.load_jsonl(window_path)
-            code_contents = [w["context"] for w in windows]
-
-            if self.is_bm25:
-                retriever = bm25s.BM25(corpus=code_contents)
-                retriever.index(bm25s.tokenize(code_contents))
-                retriever.save(index_path)
-            else:
-                import faiss
-                embeddings = self._embed_model_instance.encode(
-                    code_contents, batch_size=self.batch_size,
-                    convert_to_numpy=True, show_progress_bar=False,
-                )
-                faiss.normalize_L2(embeddings)
-                index = faiss.IndexFlatIP(embeddings.shape[1])
-                index.add(embeddings)
-                faiss.write_index(index, index_path)
-
-        if self.is_bm25:
-            return bm25s.BM25.load(index_path, load_corpus=False)
-        else:
-            import faiss
-            return faiss.read_index(index_path)
-
-    def retrieval(self, max_chunk_size, overlap, split, context_length, prompt_type, top_k):
-        """Retrieve top-k windows for the ablation configuration."""
-        output_path = self._ablation_inference_corpus_path(split, max_chunk_size, overlap, top_k)
-        if os.path.exists(output_path):
-            print(f"  Retrieval already done, skipping: {output_path}")
-            return
-
-        query_lines = Tools.load_jsonl(
-            FilePathBuilder.query_windows_path(split, context_length, prompt_type, window_size=20)
-        )
-        inference_corpus = []
-        cur_repo = None
-        index = None
-        windows = None
-
-        for query_line in tqdm(query_lines, desc=f"Retrieving overlap={overlap}"):
-            repo = query_line["metadata"]["repo"]
-            if repo != cur_repo:
-                index = self._ensure_index(repo, max_chunk_size, overlap)
-                windows_path = self._ablation_window_path(repo, max_chunk_size, overlap)
-                windows = Tools.load_jsonl(windows_path)
-                cur_repo = repo
-
-            query = query_line["query"]
-            fpath_tuple = "/".join(query_line["metadata"]["fpath_tuple"])
-
-            k = min(top_k + 50, len(windows))
-            if self.is_bm25:
-                results, scores = index.retrieve(bm25s.tokenize(query), k=k)
-                idx_list, score_list = results[0], scores[0]
-            else:
-                import faiss
-                query_embedding = self._embed_model_instance.encode(
-                    [query], convert_to_numpy=True,
-                )
-                faiss.normalize_L2(query_embedding)
-                scores, indices = index.search(query_embedding, k)
-                idx_list, score_list = indices[0], scores[0]
-
-            retrieved = []
-            for idx, score in zip(idx_list, score_list):
-                if is_context_file(windows[idx], fpath_tuple, query_line):
-                    continue
-                retrieved.append({
-                    "content": windows[idx]["context"],
-                    "metadata": windows[idx]["metadata"],
-                    "score": float(score),
-                })
-            retrieved.sort(key=lambda x: x["score"], reverse=True)
-
-            inference_corpus.append({
-                "prompt": query_line["prompt"],
-                "retrieved_windows": retrieved[:top_k],
-                "ground_truth": query_line["metadata"]["ground_truth"],
-            })
-
-        Tools.dump_jsonl(
-            inference_corpus,
-            self._ablation_inference_corpus_path(split, max_chunk_size, overlap, top_k),
-        )
-
-    def _ensure_inference(self, max_seq_length, max_generate_tokens):
-        """Lazily initialize CodeCompletionInference on first use."""
-        if not hasattr(self, "_inference"):
-            self._inference = CodeCompletionInference(
-                llm=self.llm,
-                max_generate_tokens=max_generate_tokens,
-                max_seq_length=max_seq_length,
+    for overlap in overlap_values:
+        method = overlap_method(overlap)
+        for max_chunk_size in chunking["max_chunk_sizes"]:
+            print(f"\n--- chunk: overlap={overlap}, size={max_chunk_size} ---")
+            builder = SlidingChunkBuilder(
+                max_chunk_size=max_chunk_size,
+                overlap_lines=overlap,
+                metadata_template=chunking.get("metadata_template", "repoeval"),
             )
-        return self._inference
+            for repo in repos:
+                files = Tools.iterate_repository(repo, chunking["language"])
+                all_chunks = []
+                for fpath_tuple, code in files.items():
+                    all_chunks.extend(builder.chunkify(
+                        code,
+                        repo_level_metadata={
+                            "repo": repo,
+                            "fpath_tuple": "/".join(fpath_tuple),
+                        },
+                    ))
+                merged = defaultdict(list)
+                for c in all_chunks:
+                    merged[c["content"]].append(c["metadata"])
+                windows = [{"context": ctx, "metadata": metas} for ctx, metas in merged.items()]
+                print(f"  {repo}: {len(windows)} windows")
+                Tools.dump_jsonl(windows, FilePathBuilder.repo_windows_path(repo, method, max_chunk_size))
 
-    def run_completion(self, max_chunk_size, overlap, split, top_k,
-                       max_crossfile_context, max_seq_length=8192, max_generate_tokens=50):
-        """Run code completion for the ablation configuration using vLLM."""
-        output_path = self._ablation_completion_path(split, max_chunk_size, overlap, top_k, max_crossfile_context)
-        if os.path.exists(output_path):
-            print(f"  Completion already done, skipping: {output_path}")
-            return
-
-        inference = self._ensure_inference(max_seq_length, max_generate_tokens)
-        corpus_path = self._ablation_inference_corpus_path(split, max_chunk_size, overlap, top_k)
-        inference_corpus = Tools.load_jsonl(corpus_path)
-
-        prompts = [
-            inference._build_prompt(c["prompt"], c["retrieved_windows"], max_crossfile_context)
-            for c in inference_corpus
-        ]
-        outputs = inference.model.generate(prompts, inference.sampling_params)
-
-        code_completions = []
-        for corpus, output in zip(inference_corpus, outputs):
-            code_completions.append({
-                "prompt": corpus["prompt"],
-                "completion": output.outputs[0].text,
-                "ground_truth": corpus["ground_truth"],
-                "token_cost": len(output.prompt_token_ids) + len(output.outputs[0].token_ids),
-            })
-
-        Tools.dump_jsonl(
-            code_completions,
-            self._ablation_completion_path(split, max_chunk_size, overlap, top_k, max_crossfile_context),
+    # Ensure query windows exist (shared across all overlap values)
+    query_path = FilePathBuilder.query_windows_path(
+        "api", query["context_length"], query["prompt_type"], query["window_size"],
+    )
+    if not os.path.exists(query_path):
+        print("\n--- Building query windows ---")
+        make_query_window(
+            context_length=query["context_length"],
+            prompt_type=query["prompt_type"],
+            repos=repos,
+            window_size=query["window_size"],
+            language=chunking["language"],
         )
 
-    def compute_scores(self, max_chunk_size, overlap, split, top_k, max_crossfile_context, passk=1):
-        """Compute EM/ES scores for the ablation configuration."""
-        completion_path = self._ablation_completion_path(split, max_chunk_size, overlap, top_k, max_crossfile_context)
-        completion_lines = Tools.load_jsonl(completion_path)
 
-        return {
-            "retriever": "bm25" if self.is_bm25 else self.embed_model,
-            "llm": self.llm,
-            "max_chunk_size": max_chunk_size,
-            "overlap": overlap,
-            "max_crossfile_context": max_crossfile_context,
-            "split": split,
-            "top_k": top_k,
-            "passk": passk,
-            "EM": compute_score_by_repo_with_metadata(completion_lines, "EM", passk),
-            "ES": compute_score_by_repo_with_metadata(completion_lines, "ES", passk),
-            "avg_token_cost": compute_token_cost(completion_lines),
-        }
+def step_retrieve(cfg, embed_model_filter=None):
+    """Run retrieval for each overlap variant."""
+    from .retrieval import Retriever
 
-    def run_ablation(self, split, context_length, prompt_type, top_k,
-                     max_seq_length=8192, max_generate_tokens=50,
-                     steps=None):
-        """Run the ablation study pipeline for the specified steps.
+    chunking = cfg["chunking"]
+    query = cfg["query"]
+    retrieval_cfg = cfg["retrieval"]
+    overlap_values = cfg["ablation"]["overlap_lines"]
+    methods = [overlap_method(n) for n in overlap_values]
 
-        Args:
-            steps: set of steps to run. Valid values: {"window", "retrieval", "completion"}.
-                   If None, runs all steps.
-        """
-        if steps is None:
-            steps = {"window", "retrieval", "completion"}
+    eval_split = cfg.get("evaluation", {}).get("split", "both")
+    splits = ["api", "line"] if eval_split == "both" else [eval_split]
+    embed_models = [embed_model_filter] if embed_model_filter else retrieval_cfg["embed_models"]
 
-        # Build query windows once (shared across all overlap/chunk_size combos)
-        query_path = FilePathBuilder.query_windows_path(split, context_length, prompt_type, window_size=20)
-        if not os.path.exists(query_path):
-            from .make_window import make_query_window
-            make_query_window(context_length, prompt_type, CONSTANTS.REPOs, window_size=20)
+    for embed_model in embed_models:
+        if embed_model == "none":
+            continue
+        retriever = Retriever(
+            CONSTANTS.REPOs,
+            embed_model=embed_model,
+            batch_size=retrieval_cfg.get("batch_size", 32),
+        )
+        for split in splits:
+            for max_chunk_size in chunking["max_chunk_sizes"]:
+                for method in methods:
+                    retriever.retrieval(
+                        method=method,
+                        max_chunk_size=max_chunk_size,
+                        split=split,
+                        context_length=query["context_length"],
+                        prompt_type=query["prompt_type"],
+                        top_k=retrieval_cfg["top_k"],
+                    )
 
-        if "retrieval" in steps and not self.is_bm25 and not hasattr(self, "_embed_model_instance"):
-            from sentence_transformers import SentenceTransformer
-            self._embed_model_instance = SentenceTransformer(self.embed_model, trust_remote_code=True)
 
-        for max_chunk_size in self.max_chunk_sizes:
-            for overlap in self.overlap_values:
-                print(f"\n--- Ablation: chunk_size={max_chunk_size}, overlap={overlap}, "
-                      f"retriever={'bm25' if self.is_bm25 else self.embed_model} ---")
+def step_infer(cfg, llm_filter=None):
+    """Run code completion for each overlap variant."""
+    from .code_completion import CodeCompletionInference
 
-                if "window" in steps:
-                    self.build_windows(max_chunk_size, overlap)
-                if "retrieval" in steps:
-                    self.retrieval(max_chunk_size, overlap, split, context_length, prompt_type, top_k)
+    chunking = cfg["chunking"]
+    retrieval_cfg = cfg["retrieval"]
+    inference_cfg = cfg["inference"]
+    overlap_values = cfg["ablation"]["overlap_lines"]
+    methods = [overlap_method(n) for n in overlap_values]
 
-                for max_crossfile_context in self.max_crossfile_contexts:
-                    if "completion" in steps:
-                        self.run_completion(
-                            max_chunk_size, overlap, split, top_k,
-                            max_crossfile_context,
-                            max_seq_length=max_seq_length,
-                            max_generate_tokens=max_generate_tokens,
+    eval_split = cfg.get("evaluation", {}).get("split", "both")
+    splits = ["api", "line"] if eval_split == "both" else [eval_split]
+    llms = [llm_filter] if llm_filter else inference_cfg["llms"]
+
+    for llm in llms:
+        engine = CodeCompletionInference(
+            llm=llm,
+            max_generate_tokens=inference_cfg["max_generate_tokens"],
+            max_seq_length=inference_cfg["max_seq_length"],
+        )
+        for embed_model in retrieval_cfg["embed_models"]:
+            if embed_model == "none":
+                continue
+            for split in splits:
+                for max_crossfile_context in inference_cfg["max_crossfile_contexts"]:
+                    for max_chunk_size in chunking["max_chunk_sizes"]:
+                        for method in methods:
+                            out_path = FilePathBuilder.code_completion_result_path(
+                                method, max_chunk_size, embed_model, llm, split,
+                                retrieval_cfg["top_k"], max_crossfile_context,
+                            )
+                            if os.path.exists(out_path):
+                                print(f"[Skip] {method} | {split} | {max_chunk_size} (exists)")
+                                continue
+                            engine.run_inference(
+                                method, max_chunk_size, embed_model, split,
+                                retrieval_cfg["top_k"], max_crossfile_context,
+                            )
+
+
+def step_score(cfg):
+    """Compute scores and write ablation summary CSV."""
+    from .compute_score import compute_score_by_repo_with_metadata, compute_token_cost
+
+    chunking = cfg["chunking"]
+    retrieval_cfg = cfg["retrieval"]
+    inference_cfg = cfg["inference"]
+    eval_cfg = cfg["evaluation"]
+    overlap_values = cfg["ablation"]["overlap_lines"]
+    methods = [overlap_method(n) for n in overlap_values]
+    passk = eval_cfg.get("passk", 1)
+
+    eval_split = eval_cfg.get("split", "both")
+    splits = ["api", "line"] if eval_split == "both" else [eval_split]
+
+    combinations = Tools.scan_completion_directory()
+    if not combinations:
+        print("No completion results found")
+        return
+
+    all_results = []
+    for retriever_name, llm in combinations:
+        if retriever_name == "none":
+            continue
+        for split in splits:
+            for method in methods:
+                overlap = int(method.rsplit("_o", 1)[1])
+                for chunk_size in chunking["max_chunk_sizes"]:
+                    for ctx_tokens in inference_cfg["max_crossfile_contexts"]:
+                        path = FilePathBuilder.code_completion_result_path(
+                            method, chunk_size, retriever_name, llm, split,
+                            retrieval_cfg["top_k"], ctx_tokens,
                         )
+                        if not os.path.exists(path):
+                            continue
+                        lines = Tools.load_jsonl(path)
+                        total_time = None
+                        if lines and "total_inference_time" in lines[-1]:
+                            total_time = lines[-1]["total_inference_time"]
+                            lines = lines[:-1]
 
-    def score_ablation(self, split, top_k, passk=1):
-        """Compute scores for all ablation configurations."""
-        all_results = []
-        for max_chunk_size in self.max_chunk_sizes:
-            for overlap in self.overlap_values:
-                for max_crossfile_context in self.max_crossfile_contexts:
-                    completion_path = self._ablation_completion_path(
-                        split, max_chunk_size, overlap, top_k, max_crossfile_context,
-                    )
-                    if not os.path.exists(completion_path):
-                        print(f"  Completion not found, skipping score: {completion_path}")
-                        continue
+                        all_results.append({
+                            "overlap_lines": overlap,
+                            "retriever": retriever_name,
+                            "llm": llm,
+                            "max_chunk_size": chunk_size,
+                            "max_crossfile_context": ctx_tokens,
+                            "split": split,
+                            "passk": passk,
+                            "EM": compute_score_by_repo_with_metadata(lines, "EM", passk),
+                            "ES": compute_score_by_repo_with_metadata(lines, "ES", passk),
+                            "avg_token_cost": compute_token_cost(lines),
+                            "total_inference_time": total_time,
+                        })
 
-                    result = self.compute_scores(
-                        max_chunk_size, overlap, split, top_k, max_crossfile_context, passk,
-                    )
-                    all_results.append(result)
-        return all_results
+    if not all_results:
+        print("No results to report")
+        return
+
+    csv_path = os.path.join(
+        os.path.dirname(FilePathBuilder.output_summary_result_path("api")),
+        "ablation_overlap.csv",
+    )
+    FilePathBuilder._ensure_dir(csv_path)
+
+    fieldnames = [
+        "overlap_lines", "retriever", "llm", "max_chunk_size",
+        "max_crossfile_context", "split", "passk", "EM", "ES",
+        "avg_token_cost", "total_inference_time",
+    ]
+    with open(csv_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(all_results)
+
+    print(f"\nAblation results saved to: {csv_path}")
+    print(f"Total entries: {len(all_results)}")
 
 
 def main():
-    """Entry point: load YAML config and run overlap ablation study."""
-    parser = argparse.ArgumentParser(description="Overlap ablation study for RepoEval.")
-    parser.add_argument("--config", type=str, required=True, help="Path to YAML config file.")
-    parser.add_argument("--llm", type=str, default=None, help="Run only for a specific LLM (default: all).")
-    parser.add_argument("--embed_model", type=str, default=None, help="Run only for a specific embed model (default: all).")
-    parser.add_argument(
-        "--steps", nargs="+",
-        choices=["window", "retrieval", "completion", "score"],
-        required=True,
-        help="Steps to run: window (build chunks), retrieval (retrieve contexts), "
-             "completion (LLM inference), score (compute metrics and export CSV).",
-    )
+    parser = argparse.ArgumentParser(description="Ablation: sliding window overlap.")
+    parser.add_argument("--config", type=str, required=True)
+    parser.add_argument("--steps", nargs="+", required=True,
+                        choices=["chunk", "retrieve", "infer", "score"])
+    parser.add_argument("--embed_model", type=str, default=None,
+                        help="Run retrieve for a specific embed model only.")
+    parser.add_argument("--llm", type=str, default=None,
+                        help="Run infer for a specific LLM only.")
     args = parser.parse_args()
 
     with open(args.config, "r") as f:
         cfg = yaml.safe_load(f)
 
-    ablation_cfg = cfg["ablation"]
-    query = cfg["query"]
-    retrieval_cfg = cfg["retrieval"]
-    inference_cfg = cfg["inference"]
-    eval_cfg = cfg["evaluation"]
-
-    steps = set(args.steps)
-    embed_models = [args.embed_model] if args.embed_model else retrieval_cfg["embed_models"]
-    llms = [args.llm] if args.llm else inference_cfg["llms"]
-    splits = ["api", "line"] if eval_cfg.get("split") == "both" else [eval_cfg.get("split", "api")]
-
-    pipeline_steps = steps & {"window", "retrieval", "completion"}
-
-    for split in splits:
-        all_results = []
-
-        for embed_model in embed_models:
-            for llm in llms:
-                ablation = OverlapAblationStudy(
-                    overlap_values=ablation_cfg["overlap_values"],
-                    max_chunk_sizes=ablation_cfg["max_chunk_sizes"],
-                    max_crossfile_contexts=ablation_cfg["max_crossfile_contexts"],
-                    embed_model=embed_model,
-                    llm=llm,
-                    batch_size=retrieval_cfg.get("batch_size", 32),
-                )
-
-                if pipeline_steps:
-                    ablation.run_ablation(
-                        split=split,
-                        context_length=query["context_length"],
-                        prompt_type=query["prompt_type"],
-                        top_k=retrieval_cfg["top_k"],
-                        max_seq_length=inference_cfg["max_seq_length"],
-                        max_generate_tokens=inference_cfg["max_generate_tokens"],
-                        steps=pipeline_steps,
-                    )
-
-                if "score" in steps:
-                    results = ablation.score_ablation(
-                        split=split,
-                        top_k=retrieval_cfg["top_k"],
-                        passk=eval_cfg.get("passk", 1),
-                    )
-                    all_results.extend(results)
-
-        if "score" in steps:
-            result_path = OverlapAblationStudy.ablation_result_path(split)
-            with open(result_path, "w", newline="", encoding="utf-8") as f:
-                fieldnames = ["retriever", "llm", "max_chunk_size", "overlap",
-                              "max_crossfile_context", "split", "top_k", "passk",
-                              "EM", "ES", "avg_token_cost"]
-                writer = csv.DictWriter(f, fieldnames=fieldnames)
-                writer.writeheader()
-                writer.writerows(all_results)
-
-            print(f"\nResults saved to: {result_path} ({len(all_results)} combinations)")
+    for step in args.steps:
+        print(f"\n{'=' * 60}")
+        print(f"Step: {step}")
+        print(f"{'=' * 60}")
+        if step == "chunk":
+            step_chunk(cfg)
+        elif step == "retrieve":
+            step_retrieve(cfg, embed_model_filter=args.embed_model)
+        elif step == "infer":
+            step_infer(cfg, llm_filter=args.llm)
+        elif step == "score":
+            step_score(cfg)
 
 
 if __name__ == "__main__":

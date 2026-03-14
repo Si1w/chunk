@@ -1,29 +1,25 @@
-# RepoEval experiment configuration
+# Cross-language validation: cceval on Java
+# Prerequisite: uv run python -m eval.cceval.fetch_dataset --lang java
 
-# --- Chunking ---
 chunking:
-  language: python
+  language: java
   method: all                 # cast | function | declaration | sliding | all
   max_chunk_sizes:
     - 1000
     - 2000
     - 3000
-  metadata_template: repoeval
-  overlap_lines: 15           # sliding window overlap
+  metadata_template: cceval
+  overlap_lines: 15
   chunk_expansion: false
   private_function: false
   function_overlap: false
 
-# --- Query ---
 query:
-  context_length: 2k          # 1k | 2k | 4k
-  prompt_type: codex           # codex | codegen
-  window_size: 20
+  window_size: 10
 
-# --- Retrieval ---
 retrieval:
   embed_models:
-    - none                        # no retrieval baseline
+    - none
     - bm25
     - Qwen/Qwen3-Embedding-0.6B
     - google/embeddinggemma-300m
@@ -32,13 +28,9 @@ retrieval:
   batch_size: 32
   top_k: 10
 
-# --- Inference ---
 inference:
   llms:
-    - Qwen/Qwen2.5-Coder-7B
     - deepseek-ai/deepseek-coder-6.7b-base
-    - ByteDance-Seed/Seed-Coder-8B-Base
-    - Qwen/Qwen3.5-9B-Base
     - bigcode/starcoder2-7b
   max_seq_length: 8192
   max_crossfile_contexts:
@@ -48,7 +40,5 @@ inference:
   max_generate_tokens: 50
   temperature: 0
 
-# --- Evaluation ---
 evaluation:
-  split: both                  # api | line | both
   passk: 1
