@@ -32,7 +32,7 @@ def _benchmark_path(lang):
 
 def _query_windows_path(lang, window_size):
     """Language-aware query windows path to avoid overwriting Python data."""
-    out = os.path.join(_BASE_DIR, "query", f"line_completion_{lang}_{window_size}.jsonl")
+    out = os.path.join(_BASE_DIR, "query", "ablation_java", f"line_completion_{lang}_{window_size}.jsonl")
     FilePathBuilder._ensure_dir(out)
     return out
 
@@ -407,6 +407,9 @@ def main():
 
     with open(args.config, "r") as f:
         cfg = yaml.safe_load(f)
+
+    # Isolate intermediate files under ablation_java/ subdirectories
+    FilePathBuilder._subdir = "ablation_java"
 
     for step in args.steps:
         print(f"\n{'=' * 60}")

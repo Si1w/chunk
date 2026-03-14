@@ -22,6 +22,7 @@ class CONSTANTS:
 
 class FilePathBuilder:
     python_repo_base_dir = os.path.join(_BASE_DIR, "repositories")
+    _subdir = ""  # Ablation scripts set this to isolate intermediate files
 
     @staticmethod
     def _ensure_dir(file_path):
@@ -29,13 +30,13 @@ class FilePathBuilder:
 
     @staticmethod
     def repo_windows_path(repo, method, max_chunk_size):
-        out = os.path.join(_BASE_DIR, "window", f"{repo}_{method}_{max_chunk_size}.jsonl")
+        out = os.path.join(_BASE_DIR, "window", FilePathBuilder._subdir, f"{repo}_{method}_{max_chunk_size}.jsonl")
         FilePathBuilder._ensure_dir(out)
         return out
 
     @staticmethod
     def query_windows_path(window_size):
-        out = os.path.join(_BASE_DIR, "query", f"line_completion_{window_size}.jsonl")
+        out = os.path.join(_BASE_DIR, "query", FilePathBuilder._subdir, f"line_completion_{window_size}.jsonl")
         FilePathBuilder._ensure_dir(out)
         return out
 
@@ -46,7 +47,7 @@ class FilePathBuilder:
     @staticmethod
     def index_window_path(repo, method, max_chunk_size, model_name):
         safe = Tools.safe_model_name(model_name)
-        out = os.path.join(_BASE_DIR, "index", safe, f"{repo}_{method}_{max_chunk_size}.index")
+        out = os.path.join(_BASE_DIR, "index", FilePathBuilder._subdir, safe, f"{repo}_{method}_{max_chunk_size}.index")
         FilePathBuilder._ensure_dir(out)
         return out
 
@@ -54,7 +55,7 @@ class FilePathBuilder:
     def inference_corpus_path(method, max_chunk_size, model_name, top_k):
         safe = Tools.safe_model_name(model_name)
         out = os.path.join(
-            _BASE_DIR, "inference_corpus", safe,
+            _BASE_DIR, "inference_corpus", FilePathBuilder._subdir, safe,
             f"{method}_{max_chunk_size}_{top_k}.jsonl",
         )
         FilePathBuilder._ensure_dir(out)
@@ -65,7 +66,7 @@ class FilePathBuilder:
         safe_embed = Tools.safe_model_name(embed_model)
         safe_llm = Tools.safe_model_name(llm)
         out = os.path.join(
-            _BASE_DIR, "completion", safe_embed, safe_llm,
+            _BASE_DIR, "completion", FilePathBuilder._subdir, safe_embed, safe_llm,
             f"{method}_{max_chunk_size}_{max_crossfile_context}_{top_k}.jsonl",
         )
         FilePathBuilder._ensure_dir(out)
@@ -73,7 +74,7 @@ class FilePathBuilder:
 
     @staticmethod
     def output_summary_result_path():
-        out = os.path.join(_BASE_DIR, "result", "all_results.csv")
+        out = os.path.join(_BASE_DIR, "result", FilePathBuilder._subdir, "all_results.csv")
         FilePathBuilder._ensure_dir(out)
         return out
 
@@ -129,7 +130,7 @@ class Tools:
 
     @staticmethod
     def scan_completion_directory():
-        completion_dir = os.path.join(_BASE_DIR, "completion")
+        completion_dir = os.path.join(_BASE_DIR, "completion", FilePathBuilder._subdir)
         combinations = []
         if not os.path.exists(completion_dir):
             return combinations
