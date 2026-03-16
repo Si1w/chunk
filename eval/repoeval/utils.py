@@ -22,6 +22,7 @@ class CONSTANTS:
 
 class FilePathBuilder:
     python_repo_base_dir = os.path.join(_BASE_DIR, "repositories")
+    _subdir = ""  # Ablation scripts set this to isolate intermediate files
 
     @staticmethod
     def _ensure_dir(file_path):
@@ -60,7 +61,7 @@ class FilePathBuilder:
     def inference_corpus_path(method, max_chunk_size, model_name, split, topk):
         safe = Tools.safe_model_name(model_name)
         out = os.path.join(
-            _BASE_DIR, "inference_corpus", safe,
+            _BASE_DIR, "inference_corpus", FilePathBuilder._subdir, safe,
             f"{split}_{method}_{max_chunk_size}_{topk}.jsonl",
         )
         FilePathBuilder._ensure_dir(out)
@@ -71,7 +72,7 @@ class FilePathBuilder:
         safe_embed = Tools.safe_model_name(embed_model)
         safe_llm = Tools.safe_model_name(llm)
         out = os.path.join(
-            _BASE_DIR, "completion", safe_embed, safe_llm,
+            _BASE_DIR, "completion", FilePathBuilder._subdir, safe_embed, safe_llm,
             f"{split}_{method}_{max_chunk_size}_{max_crossfile_context}_{topk}.jsonl",
         )
         FilePathBuilder._ensure_dir(out)

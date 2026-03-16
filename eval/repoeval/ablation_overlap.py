@@ -245,6 +245,9 @@ def main():
     with open(args.config, "r") as f:
         cfg = yaml.safe_load(f)
 
+    # Isolate intermediate files under ablation_overlap/ subdirectories
+    FilePathBuilder._subdir = "ablation_overlap"
+
     for step in args.steps:
         print(f"\n{'=' * 60}")
         print(f"Step: {step}")
