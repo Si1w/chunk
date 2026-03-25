@@ -1,0 +1,5 @@
+method,deepseek-coder-6.7b-base,starcoder2-7b
+function,0.2563,0.2278
+declaration,0.2901,0.264
+sliding,0.2991,0.2688
+cast,0.2964,0.2674

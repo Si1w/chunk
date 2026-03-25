@@ -1,0 +1,5 @@
+method,deepseek-coder-6.7b-base,Qwen2.5-Coder-7B,Qwen3.5-9B-Base,Seed-Coder-8B-Base
+function,0.675,0.7012,0.6826,0.711
+declaration,0.7052,0.7265,0.7088,0.731
+sliding,0.7194,0.7382,0.7274,0.7348
+cast,0.715,0.7369,0.7267,0.7349
